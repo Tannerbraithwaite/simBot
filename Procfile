@@ -1,1 +1,1 @@
-Python 3.8.8
+worker: python3 simBot.py
