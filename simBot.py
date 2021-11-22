@@ -4,21 +4,22 @@ import discord
 from datetime import date
 from dotenv import load_dotenv
 import os
+import boto3
+from boto.s3.connection import S3Connection
 
-load_dotenv()
-TOKEN = os.environ.get('DISCORD_TOKEN')
+TOKEN = S3Connection(os.environ['DISCORD_TOKEN'])
 
 #server IP
-HOST = os.environ.get('HOST')
+HOST = S3Connection(os.environ['HOST'])
 
 #database name
-DATABASE = os.environ.get('DATABASE')
+DATABASE = S3Connection(os.environ['DATABASE'])
 
 #database user
-USER = os.environ.get('DBUSER')
+USER = S3Connection(os.environ['USER'])
 
 #database password
-PASSWORD = os.environ.get('DBPASSWORD')
+PASSWORD = S3Connection(os.environ['PASSWORD'])
 
 
 teamAcronyms = {'North Stars': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 'Savage': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR',
