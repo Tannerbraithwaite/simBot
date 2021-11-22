@@ -5,8 +5,10 @@ from datetime import date
 from dotenv import load_dotenv
 import os
 
-TOKEN = os.getenv("DISCORD_TOKEN")
 
+
+TOKEN = os.getenv("DISCORD_TOKEN")
+print(TOKEN)
 #server IP
 HOST = os.getenv("HOST")
 
