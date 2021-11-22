@@ -6,19 +6,19 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-TOKEN = os.getenv('DISCORD_TOKEN')
+TOKEN = os.environ.get('DISCORD_TOKEN')
 
 #server IP
-HOST = os.getenv('HOST')
+HOST = os.environ.get('HOST')
 
 #database name
-DATABASE = os.getenv('DATABASE')
+DATABASE = os.environ.get('DATABASE')
 
 #database user
-USER = os.getenv('DBUSER')
+USER = os.environ.get('DBUSER')
 
 #database password
-PASSWORD = os.getenv('DBPASSWORD')
+PASSWORD = os.environ.get('DBPASSWORD')
 
 
 teamAcronyms = {'North Stars': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 'Savage': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR',
