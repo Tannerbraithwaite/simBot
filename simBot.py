@@ -8,7 +8,7 @@ import os
 
 
 TOKEN = os.getenv("DISCORD_TOKEN")
-print(TOKEN)
+
 #server IP
 HOST = os.getenv("HOST")
 
