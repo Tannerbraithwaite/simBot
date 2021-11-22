@@ -4,6 +4,8 @@ import discord
 from datetime import date
 from dotenv import load_dotenv
 import os
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 
