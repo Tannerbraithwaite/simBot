@@ -4,483 +4,695 @@ import discord
 from datetime import date
 from dotenv import load_dotenv
 import os
+from typing import List, Dict, Any, Optional, Tuple
 
+# Load environment variables
 load_dotenv()
+
+# Configuration constants
 TOKEN = os.environ.get('DISCORD_TOKEN')
-
-#server IP
 HOST = os.environ.get('HOST')
-
-#database name
 DATABASE = os.environ.get('DATABASE')
-
-#database user
 USER = os.environ.get('DBUSER')
-
-#database password
 PASSWORD = os.environ.get('DBPASSWORD')
 
+# Team acronyms mapping
+TEAM_ACRONYMS = {
+    'North Stars': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 
+    'Savage': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 
+    'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR', 'Oilers': 'EDM', 'Islanders': 'NYI', 
+    'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CAL', 'Capitals': 'WSH', 'Stars': 'DAL', 
+    'Canucks': 'VAN', 'Sabres': 'BUF', 'Lightning': 'TBL', 'Coyotes': 'ARZ', 'Blue Jackets': 'CBJ', 
+    'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MON', 'Bruins': 'BOS', 'Flyers': 'PHI', 
+    'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA'
+}
 
-teamAcronyms = {'North Stars': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 'Savage': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR',
-                'Oilers': 'EDM', 'Islanders': 'NYI', 'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CAL', 'Capitals': 'WSH', 'Stars': 'DAL', 'Canucks': 'VAN', 'Sabres': 'BUF', 'Lightning': 'TBL', 'Coyotes': 'ARZ',
-                'Blue Jackets': 'CBJ', 'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MON', 'Bruins': 'BOS', 'Flyers': 'PHI', 'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA'}
-today = date.today()
-
-#database_name = cursor.fetchone()
+# Bot setup
 client = discord.Client()
 bot = commands.Bot(command_prefix='$')
 
+
+class DatabaseManager:
+    """Handles database connections and operations."""
+    
+    @staticmethod
+    def get_connection():
+        """Create and return a database connection."""
+        return mysql.connect(
+            host=HOST, 
+            user=USER, 
+            password=PASSWORD, 
+            database=DATABASE
+        )
+    
+    @staticmethod
+    def execute_query(query: str, params: Tuple = None) -> List[Tuple]:
+        """Execute a query and return results."""
+        connection = DatabaseManager.get_connection()
+        cursor = connection.cursor(buffered=True)
+        
+        try:
+            cursor.execute("select database();")
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+            connection.close()
+
+
+class TeamDataManager:
+    """Handles team-related data operations."""
+    
+    @staticmethod
+    def get_team_id_mapping() -> Dict[int, str]:
+        """Get mapping of team IDs to team names."""
+        teams_data = DatabaseManager.execute_query("SELECT Number, Name FROM proteam")
+        return {team[0]: team[1] for team in teams_data}
+    
+    @staticmethod
+    def get_current_season_id() -> int:
+        """Get the current season ID."""
+        result = DatabaseManager.execute_query("select MAX(Season_ID) from proteamstandings")
+        return result[0][0] if result else 0
+    
+    @staticmethod
+    def clean_team_name(team_name: str) -> str:
+        """Clean team name by replacing underscores with spaces."""
+        replacements = {
+            'Red_Wings': 'Red Wings',
+            'Blue_Jackets': 'Blue Jackets',
+            'North_Stars': 'North Stars',
+            'Maple_Leafs': 'Maple Leafs',
+            'Golden_Knights': 'Golden Knights'
+        }
+        return replacements.get(team_name, team_name)
+
+
+class PlayerDataManager:
+    """Handles player-related data operations."""
+    
+    @staticmethod
+    def get_player_positions() -> Dict[str, List[str]]:
+        """Get player positions from database."""
+        players_data = DatabaseManager.execute_query(
+            "SELECT Name, PosC, PosLW, PosRW, PosD FROM players"
+        )
+        
+        positions = {}
+        for player in players_data:
+            name, pos_c, pos_lw, pos_rw, pos_d = player
+            positions[name] = []
+            
+            if pos_c == 'True':
+                positions[name].extend(['C', 'F'])
+            if pos_lw == 'True':
+                positions[name].extend(['LW', 'F'])
+            if pos_rw == 'True':
+                positions[name].extend(['RW', 'F'])
+            if pos_d == 'True':
+                positions[name].append('D')
+        
+        return positions
+    
+    @staticmethod
+    def add_positions_to_players(players: List[Dict]) -> List[Dict]:
+        """Add position information to player data."""
+        positions = PlayerDataManager.get_player_positions()
+        
+        for player in players:
+            player['Position'] = positions.get(player['Name'], [])
+        
+        return players
+    
+    @staticmethod
+    def merge_traded_players(players: List[Dict]) -> List[Dict]:
+        """Merge stats for players who were traded."""
+        current_players = [p for p in players if p['currentTeam'] == 'True']
+        traded_players = [p for p in players if p['currentTeam'] == 'False']
+        
+        merged_players = []
+        
+        for current_player in current_players:
+            # Find if this player was traded
+            traded_player = next(
+                (p for p in traded_players if p['Name'] == current_player['Name']), 
+                None
+            )
+            
+            if traded_player:
+                # Merge stats
+                merged_player = {
+                    'Name': current_player['Name'],
+                    'Team': current_player['Team'],
+                    'GP': current_player['GP'] + traded_player['GP'],
+                    'Shots': current_player['Shots'] + traded_player['Shots'],
+                    'Goals': current_player['Goals'] + traded_player['Goals'],
+                    'Assists': current_player['Assists'] + traded_player['Assists'],
+                    'Points': current_player['Points'] + traded_player['Points'],
+                    '+/-': current_player['+/-'] + traded_player['+/-'],
+                    'Pims': current_player['Pims'] + traded_player['Pims'],
+                    'ShotsBlocked': current_player['ShotsBlocked'] + traded_player['ShotsBlocked'],
+                    'Hits': current_player['Hits'] + traded_player['Hits'],
+                    'GWG': current_player['GWG'] + traded_player['GWG'],
+                    'currentTeam': current_player['currentTeam']
+                }
+            else:
+                merged_player = current_player.copy()
+            
+            merged_player['P/G'] = round(merged_player['Points'] / merged_player['GP'], 2)
+            merged_players.append(merged_player)
+        
+        return merged_players
+
+
+class FormattingUtils:
+    """Utility functions for formatting data."""
+    
+    @staticmethod
+    def replace_team_names(text: str) -> str:
+        """Replace full team names with acronyms."""
+        for full_name, acronym in TEAM_ACRONYMS.items():
+            text = text.replace(full_name, acronym)
+        return text
+    
+    @staticmethod
+    def format_standings_row(rank: int, team: Dict, is_division: bool = False) -> str:
+        """Format a single standings row."""
+        wins = str(int(team['W'] + team['OTW'] + team['SOW']))
+        otl = str(int(team['OTL'] + team['SOL']))
+        
+        if is_division and rank == 4:
+            return f"{rank}.  {team['teamName']}{str(int(team['GP'])).rjust(5)}{wins.rjust(5)}{str(int(team['L'])).rjust(5)}{otl.rjust(5)}{str(int(team['points'])).rjust(5)}\n"
+        
+        if rank < 10:
+            return f"{rank}.  {team['teamName']}{str(int(team['GP'])).rjust(5)}{wins.rjust(5)}{str(int(team['L'])).rjust(5)}{otl.rjust(5)}{str(int(team['points'])).rjust(5)}\n"
+        else:
+            return f"{rank}. {team['teamName']}{str(int(team['GP'])).rjust(5)}{wins.rjust(5)}{str(int(team['L'])).rjust(5)}{otl.rjust(5)}{str(int(team['points'])).rjust(5)}\n"
+
+
+class StandingsManager:
+    """Handles standings-related operations."""
+    
+    @staticmethod
+    def get_team_stats(season_id: int, team_numbers: Optional[Tuple] = None) -> List[Dict]:
+        """Get team statistics for standings."""
+        team_mapping = TeamDataManager.get_team_id_mapping()
+        
+        if team_numbers:
+            query = """SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA 
+                      FROM proteamstandings WHERE Season_ID = (%s) AND Number IN ({})""".format(
+                ','.join(['%s'] * len(team_numbers))
+            )
+            params = (season_id,) + team_numbers
+        else:
+            query = """SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA 
+                      FROM proteamstandings WHERE Season_ID = (%s)"""
+            params = (season_id,)
+        
+        results = DatabaseManager.execute_query(query, params)
+        
+        team_stats = []
+        for team in results:
+            team_stats.append({
+                'teamName': team_mapping[team[0]],
+                'points': team[1], 'GP': team[2], 'W': team[3], 'L': team[4],
+                'OTW': team[5], 'OTL': team[6], 'SOW': team[7], 'SOL': team[8],
+                'GF': team[9], 'GA': team[10]
+            })
+        
+        return team_stats
+    
+    @staticmethod
+    def sort_standings(teams: List[Dict]) -> List[Dict]:
+        """Sort teams by standings criteria."""
+        return sorted(teams, key=lambda k: (
+            -int(k['points']), 
+            int(k['GP']), 
+            int(k['W']) + int(k['OTW']), 
+            int(k['W']) + int(k['OTW']) + int(k['SOW'])
+        ))
+    
+    @staticmethod
+    def format_league_standings(teams: List[Dict]) -> Tuple[str, str]:
+        """Format league standings into two parts."""
+        standings1 = '\n    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+        standings2 = ''
+        
+        for i, team in enumerate(teams, 1):
+            row = FormattingUtils.format_standings_row(i, team)
+            if i <= 16:
+                standings1 += row
+            else:
+                standings2 += row
+        
+        return standings1, standings2
+    
+    @staticmethod
+    def format_division_standings(teams: List[Dict], is_conference: bool = False) -> str:
+        """Format division/conference standings."""
+        standings = '\n    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+        
+        for i, team in enumerate(teams, 1):
+            if is_conference and i == 10:
+                standings += '----------------------\n'
+            elif not is_conference and i == 4:
+                standings += '----------------------\n'
+            
+            row = FormattingUtils.format_standings_row(i, team, not is_conference)
+            standings += row
+        
+        return standings
+
+
+class ScoresManager:
+    """Handles scores-related operations."""
+    
+    @staticmethod
+    def get_games_for_date(selected_date: str) -> Tuple[List[Tuple], str]:
+        """Get games for a specific date."""
+        today = str(date.today())
+        
+        if selected_date != today:
+            games = DatabaseManager.execute_query(
+                """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
+                   FROM todaysgame WHERE SUBSTR(Date, 1, 10) = (%s)""",
+                (selected_date,)
+            )
+            game_date = selected_date
+        else:
+            # Get current date
+            max_date_result = DatabaseManager.execute_query("SELECT MAX(Date) FROM todaysgame")
+            max_date = max_date_result[0][0] if max_date_result else None
+            
+            if max_date:
+                games = DatabaseManager.execute_query(
+                    """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
+                       FROM todaysgame WHERE Date = (%s)""",
+                    (max_date,)
+                )
+                game_date = max_date.date()
+            else:
+                games = []
+                game_date = today
+        
+        return games, str(game_date)
+    
+    @staticmethod
+    def format_game_scores(games: List[Tuple]) -> str:
+        """Format game scores for display."""
+        game_scores = ''
+        for game in games:
+            visitor_team, visitor_score, home_team, home_score = game
+            game_scores += (f"{visitor_team}{str(int(visitor_score)).rjust(20 - len(visitor_team))}\n"
+                          f"{home_team}{str(int(home_score)).rjust(20 - len(home_team))}\n\n")
+        return game_scores
+
+
+class PlayerStatsManager:
+    """Handles player statistics operations."""
+    
+    @staticmethod
+    def get_player_stats(season_id: int) -> List[Dict]:
+        """Get all player statistics."""
+        team_mapping = TeamDataManager.get_team_id_mapping()
+        
+        players_data = DatabaseManager.execute_query(
+            """SELECT Name, Team, ProGP, ProShots, ProG, ProA, ProPoint, ProPlusMinus, 
+                      ProPim, ProShotsBlock, ProHits, ProGW, Active 
+               FROM playerstats WHERE Season_ID = (%s) AND proGP > 0""",
+            (season_id,)
+        )
+        
+        cleaned_stats = []
+        for player in players_data:
+            cleaned_stats.append({
+                'Name': player[0],
+                'Team': team_mapping[int(player[1])],
+                'GP': player[2], 'Shots': player[3], 'Goals': player[4],
+                'Assists': player[5], 'Points': player[6], '+/-': player[7],
+                'Pims': player[8], 'ShotsBlocked': player[9], 'Hits': player[10],
+                'GWG': player[11], 'currentTeam': player[12]
+            })
+        
+        return cleaned_stats
+    
+    @staticmethod
+    def filter_players_by_team_and_position(players: List[Dict], team: str, position: str) -> List[Dict]:
+        """Filter players by team and position."""
+        if team != 'all':
+            players = [p for p in players if p['Team'] == team]
+        
+        if position != 'all':
+            players = [p for p in players if position in p['Position']]
+        
+        return players
+    
+    @staticmethod
+    def sort_players_by_stat(players: List[Dict], stat: str) -> List[Dict]:
+        """Sort players by specified statistic."""
+        stat_mapping = {
+            'P/G': 'P/G', 'Goals': 'Goals', 'Assists': 'Assists', 'Points': 'Points',
+            'Shots': 'Shots', '+/-': '+/-', 'Pims': 'Pims', 'Shots_blocked': 'ShotsBlocked',
+            'GWG': 'GWG', 'Hits': 'Hits'
+        }
+        
+        sort_key = stat_mapping.get(stat, 'Points')
+        reverse = sort_key != 'P/G'  # GAA sorts in ascending order
+        
+        return sorted(players, key=lambda k: (-k[sort_key] if reverse else k[sort_key]))
+    
+    @staticmethod
+    def format_player_leaders(players: List[Dict], stat: str) -> str:
+        """Format player leaders for display."""
+        leaders = 'Team' + 'Name'.rjust(7) + stat.rjust(22) + '\n'
+        
+        for player in players:
+            leaders += (f"{TEAM_ACRONYMS[player['Team']]}    {player['Name']}"
+                      f"{str(player[stat]).rjust(26 - len(str(player['Name'])))}\n")
+        
+        return leaders
+
+
+class GoalieStatsManager:
+    """Handles goalie statistics operations."""
+    
+    @staticmethod
+    def get_goalie_stats(season_id: int) -> List[Dict]:
+        """Get all goalie statistics."""
+        team_mapping = TeamDataManager.get_team_id_mapping()
+        
+        goalies_data = DatabaseManager.execute_query(
+            """SELECT Name, Team, ProGP, ProMinPlay, ProW, ProL, ProOTL, ProShutouts, 
+                      ProGA, ProSA, Active 
+               FROM goaliestats WHERE Season_ID = (%s) AND proGP > 0""",
+            (season_id,)
+        )
+        
+        cleaned_stats = []
+        for goalie in goalies_data:
+            saves = int(goalie[9]) - int(goalie[8])  # SA - GA
+            cleaned_stats.append({
+                'Name': goalie[0],
+                'Team': team_mapping[int(goalie[1])],
+                'GP': goalie[2], 'Minutes': goalie[3], 'Wins': goalie[4],
+                'Losses': goalie[5], 'OTL': goalie[6], 'SO': goalie[7],
+                'GA': goalie[8], 'Saves': saves, 'SA': int(goalie[9]),
+                'currentTeam': goalie[10]
+            })
+        
+        return cleaned_stats
+    
+    @staticmethod
+    def merge_traded_goalies(goalies: List[Dict]) -> List[Dict]:
+        """Merge stats for goalies who were traded."""
+        current_goalies = [g for g in goalies if g['currentTeam'] == 'True']
+        traded_goalies = [g for g in goalies if g['currentTeam'] == 'False']
+        
+        merged_goalies = []
+        
+        for current_goalie in current_goalies:
+            traded_goalie = next(
+                (g for g in traded_goalies if g['Name'] == current_goalie['Name']), 
+                None
+            )
+            
+            if traded_goalie:
+                merged_goalie = {
+                    'Name': current_goalie['Name'],
+                    'Team': current_goalie['Team'],
+                    'GP': current_goalie['GP'] + traded_goalie['GP'],
+                    'Minutes': current_goalie['Minutes'] + traded_goalie['Minutes'],
+                    'Wins': current_goalie['Wins'] + traded_goalie['Wins'],
+                    'Losses': current_goalie['Losses'] + traded_goalie['Losses'],
+                    'OTL': current_goalie['OTL'] + traded_goalie['OTL'],
+                    'SO': current_goalie['SO'] + traded_goalie['SO'],
+                    'GA': current_goalie['GA'] + traded_goalie['GA'],
+                    'Saves': current_goalie['Saves'] + traded_goalie['Saves'],
+                    'SA': current_goalie['SA'] + traded_goalie['SA'],
+                    'currentTeam': current_goalie['currentTeam']
+                }
+            else:
+                merged_goalie = current_goalie.copy()
+            
+            merged_goalies.append(merged_goalie)
+        
+        return merged_goalies
+    
+    @staticmethod
+    def calculate_goalie_stats(goalies: List[Dict]) -> List[Dict]:
+        """Calculate additional goalie statistics."""
+        for goalie in goalies:
+            goalie['GP'] = int(goalie['GP'])
+            total_shots = goalie['Saves'] + goalie['GA']
+            goalie['SVP'] = round(goalie['Saves'] / total_shots, 3) if total_shots > 0 else 0.000
+            goalie['GAA'] = round(goalie['GA'] / (goalie['Minutes'] / 3600), 2) if goalie['Minutes'] > 0 else 0.00
+        
+        return goalies
+    
+    @staticmethod
+    def sort_goalies_by_stat(goalies: List[Dict], stat: str) -> List[Dict]:
+        """Sort goalies by specified statistic."""
+        stat_mapping = {
+            'GAA': 'GAA', 'SV%': 'SVP', 'W': 'Wins', 'GP': 'GP',
+            'SO': 'SO', 'L': 'Losses', 'S': 'Saves'
+        }
+        
+        sort_key = stat_mapping.get(stat, 'SVP')
+        reverse = sort_key != 'GAA'  # GAA sorts in ascending order
+        
+        return sorted(goalies, key=lambda k: (-k[sort_key] if reverse else k[sort_key]))
+    
+    @staticmethod
+    def format_goalie_leaders(goalies: List[Dict], stat: str) -> str:
+        """Format goalie leaders for display."""
+        leaders = 'Team' + 'goalie'.rjust(10) + stat.rjust(16) + '\n'
+        
+        for goalie in goalies:
+            leaders += (f"{TEAM_ACRONYMS[goalie['Team']]}     {goalie['Name']}"
+                      f"{str(goalie[stat]).rjust(22 - len(str(goalie['Name'])))}\n")
+        
+        return leaders
+
+
+# Bot event handlers
 @client.event
 async def on_ready():
-    await print(f'{client.user} has connected to Discord!')
+    print(f'{client.user} has connected to Discord!')
 
 
-def replace_words(s, words):
-    for k, v in words.items():
-        s = s.replace(k, v)
-    return s
-
-
-def add_position_to_skater(listOfPlayers):
-    db_connection = mysql.connect(host=HOST, user=USER, password=PASSWORD, database=DATABASE)
-    cursor = db_connection.cursor(buffered=True)
-    cursor.execute("select database();")
-    cursor.execute("""SELECT Name, PosC, PosLW, PosRW, PosD FROM players""")
-    playersByPosition = cursor.fetchall()
-
-    for player in listOfPlayers:
-        player['Position'] = []
-        for positionplayer in playersByPosition:
-            if player['Name'] == positionplayer[0]:
-                if positionplayer[1] == 'True':
-                    player['Position'].append('C')
-                    player['Position'].append('F')
-                if positionplayer[2] == 'True':
-                    player['Position'].append('LW')
-                    player['Position'].append('F')
-                if positionplayer[3] == 'True':
-                    player['Position'].append('RW')
-                    player['Position'].append('F')
-                if positionplayer[4] == 'True':
-                    player['Position'].append('D')
-    cursor.close()
-    db_connection.close()
-    return listOfPlayers
-
-
+# Bot commands
 @bot.command(name='scores', help="type $scores followed by the date(ie. $scores 2020/03/29) to get the scores for a specific date")
-async def scoredate(ctx, selecteddate=str(today)):
-    db_connection = mysql.connect(host=HOST, user=USER, password=PASSWORD, database=DATABASE)
-    cursor = db_connection.cursor(buffered=True)
-    cursor.execute("select database();")
-    if selecteddate != str(today):
-        dateInput = (selecteddate, )
-        cursor.execute("""SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore FROM todaysgame where SUBSTR(Date, 1 , 10) = (%s)""", dateInput)
-        todaysGames = cursor.fetchall()
-        gameDates = selecteddate
-    else:
-        #find current date to sort games
-        cursor.execute("select MAX(Date) from todaysgame")
-        selectedrow = cursor.fetchall()
-        #get all games from that day
-        cursor.execute("""SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore FROM todaysgame where Date = (%s)""", selectedrow[0])
-        todaysGames = cursor.fetchall()
-        gameDates = selectedrow[0][0].date()
-    game_scores = ''
-    for game in todaysGames:
-
-        game_scores = game_scores + game[0] + str(int(game[1])).rjust(20 - len(game[0])) + '\n' + game[2] + str(int(game[3])).rjust(20 - len(game[2])) + '\n' + '\n'
-    cursor.close()
-    db_connection.close()
-    #create a title
-    title_score = "the scores for " + str(gameDates)
-    scores_formatted = "```" + game_scores + "```"
-    embed = discord.Embed(title=title_score, url='http://cchlsim.com/pro_scores.php', color=0xeee657)
-    embed.add_field(name="Scores", value=scores_formatted)
-    await ctx.send(embed=embed)
+async def scoredate(ctx, selecteddate: str = str(date.today())):
+    """Display scores for a specific date."""
+    try:
+        games, game_date = ScoresManager.get_games_for_date(selecteddate)
+        
+        if not games:
+            await ctx.send("No games found for the specified date.")
+            return
+        
+        game_scores = ScoresManager.format_game_scores(games)
+        title_score = f"the scores for {game_date}"
+        scores_formatted = f"```{game_scores}```"
+        
+        embed = discord.Embed(title=title_score, url='http://cchlsim.com/pro_scores.php', color=0xeee657)
+        embed.add_field(name="Scores", value=scores_formatted)
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"Error retrieving scores: {str(e)}")
 
 
 @bot.command(name='standings', help="type $standings followed by the division of conference(ie. $standings Pacific, $standings Western) to get the scores for a division or conference. You can view wildcard standings with $standings Western_wildcard. Default is league standings")
-async def standings(ctx, divCon=None):
-    db_connection = mysql.connect(host=HOST, user=USER, password=PASSWORD, database=DATABASE)
-    cursor = db_connection.cursor(buffered=True)
-    cursor.execute("select database();")
-    teamsIdMatchingDict = {}
-    cursor.execute("""SELECT Number, Name FROM proteam""")
-    teamsAndIDs = cursor.fetchall()
-    cursor.execute("select MAX(Season_ID) from proteamstandings")
-    Season_ID = cursor.fetchall()
-    teamStats = []
-    for team in teamsAndIDs:
-        teamsIdMatchingDict[team[0]] = team[1]
-    if divCon is None:
-        cursor.execute("""SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA FROM proteamstandings where Season_ID = (%s)""", Season_ID[0])
-        unsortedStandings = cursor.fetchall()
-        for team in unsortedStandings:
-            teamStats.append({'teamName': teamsIdMatchingDict[team[0]], 'points': team[1], 'GP': team[2], 'W': team[3], 'L': team[4], 'OTW': team[5], 'OTL': team[6], 'SOW': team[7], 'SOL': team[8], 'GF': team[9], 'GA': team[10]})
-        sortedStandings = sorted(teamStats, key = lambda k: (-int(k['points']), int(k['GP']), int(k['W']) + int(k['OTW']), int(k['W']) + int(k['OTW']) + int(k['SOW'])))
-        standings1 = '\n' + '    ' + 'Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-        teamcount = 1
-        standings2 = ''
-        for team in sortedStandings:
-            if teamcount <= 16:
-                if teamcount < 10:
-                    wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                    OTL = str(int(team['OTL'] + team['SOL']))
-                    standings1 = standings1 + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                else:
-                    wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                    OTL = str(int(team['OTL'] + team['SOL']))
-                    standings1 = standings1 + str(teamcount) + '. ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                teamcount += 1
-            else:
-                wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                OTL = str(int(team['OTL'] + team['SOL']))
-                standings2 = standings2 + str(teamcount) + '. ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                teamcount += 1
-        formattedStandings1 = "```" + standings1 + "```"  ##Format the data for discord
-        formattedStandings1 = replace_words(formattedStandings1, teamAcronyms)
-        formattedStandings2 = "```" + standings2 + "```"  ##Format the data for discord
-        formattedStandings2 = replace_words(formattedStandings2, teamAcronyms)
-        print(formattedStandings1+'\n'+formattedStandings2,)
-        embed = discord.Embed(title="League Standings", color=0xeee657)  ##Create the Embed Object to send to Discord
-        embed.add_field(name="League Standings", value=formattedStandings1, inline=False)  ##Add the top 16 teams to the embed object
-        embed.add_field(name="------------------------------", value=formattedStandings2, inline=False)  ##Add the rest of the teams to the embed object
-    if divCon is not None:
-        divCon = divCon.capitalize()
-        if divCon == "Western_wildcard" or divCon == "Eastern_wildcard":
-            if divCon == "Western_wildcard":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Central'""")
-                division1teams = cursor.fetchall()
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Pacific'""")
-                division2teams = cursor.fetchall()
-            if divCon == "Eastern_wildcard":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Northeast'""")
-                division1teams = cursor.fetchall()
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Atlantic'""")
-                division2teams = cursor.fetchall()
-            div1teamsnumbers = []
-            div2teamsnumbers = []
-            for team in division1teams:
-                div1teamsnumbers.append(team[0])
-            for team in division2teams:
-                div2teamsnumbers.append(team[0])
-            division1teamNumbers = tuple(div1teamsnumbers)
-            division2teamNumbers = tuple(div2teamsnumbers)
-            unsortedDiv1Standings = []
-            unsortedDiv2Standings = []
-            teamStats1 = []
-            teamStats2 = []
-            for team in division1teamNumbers:
-                cursor.execute("""SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA FROM proteamstandings where Season_ID = (%s) and Number = (%s)""", (Season_ID[0][0], team))
-                unsortedDiv1Standings.append(cursor.fetchall())
-            for team in division2teamNumbers:
-                cursor.execute("""SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA FROM proteamstandings where Season_ID = (%s) and Number = (%s)""", (Season_ID[0][0], team))
-                unsortedDiv2Standings.append(cursor.fetchall())
-            for team in unsortedDiv1Standings:
-                teamStats1.append({'teamName': teamsIdMatchingDict[team[0][0]], 'points': team[0][1], 'GP': team[0][2], 'W': team[0][3], 'L': team[0][4],'OTW': team[0][5], 'OTL': team[0][6], 'SOW': team[0][7], 'SOL': team[0][8], 'GF': team[0][9], 'GA': team[0][10]})
-            for team in unsortedDiv2Standings:
-                teamStats2.append({'teamName': teamsIdMatchingDict[team[0][0]], 'points': team[0][1], 'GP': team[0][2], 'W': team[0][3], 'L': team[0][4],'OTW': team[0][5], 'OTL': team[0][6], 'SOW': team[0][7], 'SOL': team[0][8], 'GF': team[0][9], 'GA': team[0][10]})
-            sortedStandings1 = sorted(teamStats1, key=lambda k: (-int(k['points']), int(k['GP']), int(k['W']) + int(k['OTW']), int(k['W']) + int(k['OTW']) + int(k['SOW'])))
-            sortedStandings2 = sorted(teamStats2, key=lambda k: (-int(k['points']), int(k['GP']), int(k['W']) + int(k['OTW']), int(k['W']) + int(k['OTW']) + int(k['SOW'])))
-            standings = '\n' + '    ' + 'Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-            teamcount = 1
-            div1leaders = sortedStandings1[:3]
-            div2leaders = sortedStandings2[:3]
-            wildcardteams = sortedStandings1[3:] + sortedStandings2[3:]
-            wildcardteams = sorted(wildcardteams, key=lambda k: (-int(k['points']), int(k['GP']), int(k['W']) + int(k['OTW']), int(k['W']) + int(k['OTW']) + int(k['SOW'])))
-            for team in div1leaders:
-                wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                OTL = str(int(team['OTL'] + team['SOL']))
-                standings = standings + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                teamcount += 1
-            standings = standings + '-----------------------' + '\n'
-            teamcount = 1
-            for team in div2leaders:
-                wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                OTL = str(int(team['OTL'] + team['SOL']))
-                standings = standings + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                teamcount += 1
-            standings = standings + '-----------------------' + '\n'
-            teamcount = 1
-            for team in wildcardteams:
-                if teamcount == 3:
-                    standings = standings + '-----------------------' + '\n'
-                if teamcount >= 10:
-                    wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                    OTL = str(int(team['OTL'] + team['SOL']))
-                    standings = standings + str(teamcount) + '. ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    teamcount += 1
-                else:
-                    wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                    OTL = str(int(team['OTL'] + team['SOL']))
-                    standings = standings + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    teamcount += 1
-            formattedStandings = "```" + standings + "```"
-            formattedStandings = replace_words(formattedStandings, teamAcronyms)
-            print(formattedStandings)
-            embed = discord.Embed(title=divCon + " Standings", color=0xeee657)
-            embed.add_field(name=divCon +" Standings", value=formattedStandings, inline=False)
+async def standings(ctx, div_con: Optional[str] = None):
+    """Display standings for league, conference, division, or wildcard."""
+    try:
+        season_id = TeamDataManager.get_current_season_id()
+        
+        if div_con is None:
+            # League standings
+            team_stats = StandingsManager.get_team_stats(season_id)
+            sorted_teams = StandingsManager.sort_standings(team_stats)
+            standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
+            
+            formatted_standings1 = FormattingUtils.replace_team_names(f"```{standings1}```")
+            formatted_standings2 = FormattingUtils.replace_team_names(f"```{standings2}```")
+            
+            embed = discord.Embed(title="League Standings", color=0xeee657)
+            embed.add_field(name="League Standings", value=formatted_standings1, inline=False)
+            embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
+            
         else:
-            if divCon == "Western":
-                cursor.execute("""SELECT Number FROM proteam where Conference = 'Western'""")
-                teamNumbers = cursor.fetchall()
-            if divCon == "Eastern":
-                cursor.execute("""SELECT Number FROM proteam where Conference = 'Eastern'""")
-                teamNumbers = cursor.fetchall()
-            if divCon == "Pacific":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Pacific'""")
-                teamNumbers = cursor.fetchall()
-            if divCon == "Northeast" or divCon == "North East" or divCon == "Metro" or divCon == "Metroplitan":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Northeast'""")
-                teamNumbers = cursor.fetchall()
-            if divCon == "Atlantic":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Atlantic'""")
-                teamNumbers = cursor.fetchall()
-            if divCon == "Central":
-                cursor.execute("""SELECT Number FROM proteam where Division = 'Central'""")
-                teamNumbers = cursor.fetchall()
+            div_con = div_con.capitalize()
+            
+            if div_con in ["Western_wildcard", "Eastern_wildcard"]:
+                # Wildcard standings
+                if div_con == "Western_wildcard":
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Central'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Pacific'"
+                else:  # Eastern_wildcard
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Northeast'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Atlantic'"
+                
+                div1_teams = DatabaseManager.execute_query(div1_query)
+                div2_teams = DatabaseManager.execute_query(div2_query)
+                
+                div1_numbers = tuple(team[0] for team in div1_teams)
+                div2_numbers = tuple(team[0] for team in div2_teams)
+                
+                div1_stats = StandingsManager.get_team_stats(season_id, div1_numbers)
+                div2_stats = StandingsManager.get_team_stats(season_id, div2_numbers)
+                
+                sorted_div1 = StandingsManager.sort_standings(div1_stats)
+                sorted_div2 = StandingsManager.sort_standings(div2_stats)
+                
+                # Format wildcard standings
+                standings = '\n    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+                
+                # Division leaders
+                div1_leaders = sorted_div1[:3]
+                div2_leaders = sorted_div2[:3]
+                
+                for i, team in enumerate(div1_leaders, 1):
+                    standings += FormattingUtils.format_standings_row(i, team)
+                
+                standings += '-----------------------\n'
+                
+                for i, team in enumerate(div2_leaders, 1):
+                    standings += FormattingUtils.format_standings_row(i, team)
+                
+                standings += '-----------------------\n'
+                
+                # Wildcard teams
+                wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
+                wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
+                
+                for i, team in enumerate(wildcard_teams, 1):
+                    if i == 3:
+                        standings += '-----------------------\n'
+                    standings += FormattingUtils.format_standings_row(i, team)
+                
+                formatted_standings = FormattingUtils.replace_team_names(f"```{standings}```")
+                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"{div_con} Standings", value=formatted_standings, inline=False)
+                
             else:
-                await ctx.send("We could not find that division, please check spelling(Atlantic, Central, Northeast/Metro, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)")
-            teams = []
-            for team in teamNumbers:
-                teams.append(team[0])
-            teamNumbers = tuple(teams)
-            unsortedStandings = []
-            for team in teamNumbers:
-                cursor.execute("""SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA FROM proteamstandings where Season_ID = (%s) and Number = (%s)""", (Season_ID[0][0], team))
-                unsortedStandings.append(cursor.fetchall())
-            for team in unsortedStandings:
-                teamStats.append({'teamName': teamsIdMatchingDict[team[0][0]], 'points': team[0][1], 'GP': team[0][2], 'W': team[0][3], 'L': team[0][4],'OTW': team[0][5], 'OTL': team[0][6], 'SOW': team[0][7], 'SOL': team[0][8], 'GF': team[0][9], 'GA': team[0][10]})
-            sortedStandings = sorted(teamStats, key=lambda k: (-int(k['points']), int(k['GP']), int(k['W']) + int(k['OTW']), int(k['W']) + int(k['OTW']) + int(k['SOW'])))
-            standings = '\n' + '    ' + 'Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-            teamcount = 1
-            if divCon == "Pacific" or divCon == "Central" or divCon == "Northeast" or divCon == "North East" or divCon == "Metro" or divCon == "Metropolitan" or divCon == 'Atlantic':
-                for team in sortedStandings:
-                    if teamcount == 4:
-                        wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                        OTL = str(int(team['OTL'] + team['SOL']))
-                        standings = standings + '----------------------' + '\n' + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    else:
-                        wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                        OTL = str(int(team['OTL'] + team['SOL']))
-                        standings = standings + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    teamcount += 1
-            if divCon == "Eastern" or divCon == "Western":
-                for team in sortedStandings:
-                    if teamcount <= 9:
-                        wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                        OTL = str(int(team['OTL'] + team['SOL']))
-                        standings = standings + str(teamcount) + '.  ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    else:
-                        wins = str(int(team['W'] + team['OTW'] + team['SOW']))
-                        OTL = str(int(team['OTL'] + team['SOL']))
-                        standings = standings + str(teamcount) + '. ' + team['teamName'] + f"{str(int(team['GP']))}".rjust(5) + wins.rjust(5) + f"{str(int(team['L']))}".rjust(5) + OTL.rjust(5) + f"{str(int(team['points']))}".rjust(5) + '\n'
-                    teamcount += 1
-            formattedStandings = "```" + standings + "```"  ##Format the data for discord
-            formattedStandings = replace_words(formattedStandings, teamAcronyms)
-            print(formattedStandings)
-            embed = discord.Embed(title=divCon + " Standings", color=0xeee657)  ##Create the Embed Object to send to Discord
-            embed.add_field(name=divCon +" Standings", value=formattedStandings, inline=False)  ##Add the top 16 teams to the embed object
-    cursor.close()
-    db_connection.close()
-    await ctx.send(embed=embed)  ##Send the object to discord
+                # Conference/Division standings
+                division_queries = {
+                    "Western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
+                    "Eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
+                    "Pacific": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
+                    "Northeast": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "North East": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "Metro": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "Metropolitan": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "Atlantic": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
+                    "Central": "SELECT Number FROM proteam WHERE Division = 'Central'"
+                }
+                
+                if div_con not in division_queries:
+                    await ctx.send("We could not find that division, please check spelling(Atlantic, Central, Northeast/Metro, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)")
+                    return
+                
+                team_numbers = DatabaseManager.execute_query(division_queries[div_con])
+                team_numbers_tuple = tuple(team[0] for team in team_numbers)
+                
+                team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
+                sorted_teams = StandingsManager.sort_standings(team_stats)
+                
+                is_conference = div_con in ["Western", "Eastern"]
+                standings = StandingsManager.format_division_standings(sorted_teams, is_conference)
+                
+                formatted_standings = FormattingUtils.replace_team_names(f"```{standings}```")
+                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"{div_con} Standings", value=formatted_standings, inline=False)
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"Error retrieving standings: {str(e)}")
 
 
-@bot.command(name='scoring_leaders',help="type $scoring_leaders followed by the team you want to filter by, then the position, then the stat for example $scoring_leaders Flames D Goals will give you the flames Defence Goal leaders, $scoring_leaders all F Hits will give you the forward hit leaders for the entire league. positions are C, RW, LW, D. available stats are Points, Goals, Assists, Hits, Pims, +/-, Shots, ShotsBlocked, and GWG. If a team has a space in it's name it requires an underscore ie. $scoring_leaders Golden_Knights")
-async def scoring_leaders(ctx, teamselected='all', position='all', stat='Points'):
-    db_connection = mysql.connect(host=HOST, user=USER, password=PASSWORD, database=DATABASE)
-    cursor = db_connection.cursor(buffered=True)
-    cursor.execute("select database();")
-    teamsIdMatchingDict = {}
-    cursor.execute("""SELECT Number, Name FROM proteam""")
-    teamsAndIDs = cursor.fetchall()
-    cursor.execute("select MAX(Season_ID) from proteamstandings")
-    Season_ID = cursor.fetchall()
-    for team in teamsAndIDs:
-        teamsIdMatchingDict[team[0]] = team[1]
-    cleanedPlayersStats = []
-    tradedPlayersList = []
-    mergedplayerList = []
-    cursor.execute(
-        """SELECT Name, Team, ProGP, ProShots, ProG, ProA, ProPoint, ProPlusMinus, ProPim, ProShotsBlock, ProHits, ProGW, Active from playerstats where Season_ID = (%s) and proGP > 0""",
-        Season_ID[0])
-    allPlayerstats = cursor.fetchall()
-    for player in allPlayerstats:
-        cleanedPlayersStats.append(
-            {'Name': player[0], 'Team': teamsIdMatchingDict[int(player[1])], 'GP': player[2], 'Shots': player[3],
-             'Goals': player[4], 'Assists': player[5], 'Points': player[6], '+/-': player[7], 'Pims': player[8],
-             'ShotsBlocked': player[9], 'Hits': player[10], 'GWG': player[11], 'currentTeam': player[12]})
-    for player in cleanedPlayersStats:
-        if player['currentTeam'] == 'False':
-            tradedPlayersList.append(player)
-    for checkplayer in cleanedPlayersStats:
-        for comparedplayer in tradedPlayersList:
-            if checkplayer['Name'] == comparedplayer['Name']:
-                combinedplayer = {'Name': checkplayer['Name'], 'Team': checkplayer['Team'],
-                                  'GP': int(checkplayer['GP'] + comparedplayer['GP']),
-                                  'Shots': int(checkplayer['Shots'] + comparedplayer['Shots']),
-                                  'Goals': int(checkplayer['Goals'] + comparedplayer['Goals']),
-                                  'Assists': int(checkplayer['Assists'] + comparedplayer['Assists']),
-                                  'Points': int(checkplayer['Points'] + comparedplayer['Points']),
-                                  '+/-': int(checkplayer['+/-'] + comparedplayer['+/-']),
-                                  'Pims': int(checkplayer['Pims'] + comparedplayer['Pims']),
-                                  'ShotsBlocked': int(checkplayer['ShotsBlocked'] + comparedplayer['ShotsBlocked']),
-                                  'Hits': int(checkplayer['Hits'] + comparedplayer['Hits']),
-                                  'GWG': int(checkplayer['GWG'] + comparedplayer['GWG']),
-                                  'currentTeam': checkplayer['currentTeam'],
-                                  'P/G': round(checkplayer['Points']/checkplayer['GP'], 2)}
-            else:
-                combinedplayer = checkplayer
-                combinedplayer['P/G'] = round(checkplayer['Points']/checkplayer['GP'], 2)
-            mergedplayerList.append(combinedplayer)
-    for player in mergedplayerList:
-        if player['currentTeam'] == 'False':
-            mergedplayerList.remove(player)
-    mergedplayerList = add_position_to_skater(mergedplayerList)
-    if teamselected == 'Red_Wings':
-        teamselected = 'Red Wings'
-    if teamselected == 'Blue_Jackets':
-        teamselected = 'Blue Jackets'
-    if teamselected == "North_Stars":
-        teamselected = "North Stars"
-    if teamselected == "Maple_Leafs":
-        teamselected = 'Maple Leafs'
-    if teamselected == 'Golden_Knights':
-        teamselected = 'Golden Knights'
-
-    if teamselected == 'all':
-        pass
-    else:
-        mergedplayerList = [x for x in mergedplayerList if x['Team'] == teamselected]
-    if position == 'all':
-        pass
-    else:
-        mergedplayerList = [x for x in mergedplayerList if position in x['Position']]
-    if stat == 'P/G':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['P/G']))
-        checkstat = 'P/G'
-    if stat == 'Goals':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Goals']))
-        checkstat = 'Goals'
-    if stat == 'Assists':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Assists']))
-        checkstat = 'Assists'
-    if stat == 'Points':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Points']))
-        checkstat = 'Points'
-    if stat == 'Shots':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Shots']))
-        checkstat = 'Shots'
-    if stat == '+/-':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['+/-']))
-        checkstat = '+/-'
-    if stat == 'Pims':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Pims']))
-        checkstat = 'Pims'
-    if stat == 'Shots_blocked':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['ShotsBlocked']))
-        checkstat = 'ShotsBlocked'
-    if stat == 'GWG':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['GWG']))
-        checkstat = 'GWG'
-    if stat == 'Hits':
-        sortedplayerList = sorted(mergedplayerList, key=lambda k: (-k['Hits']))
-        checkstat = 'Hits'
-
-    if len(sortedplayerList) < 10:
-        amountToDisplay = len(sortedplayerList)
-    else:
-        amountToDisplay = 10
-    sortedplayerList = sortedplayerList[:amountToDisplay]
-    player_leaders = 'Team' + 'Name'.rjust(7) + checkstat.rjust(22) + '\n'
-    for player in sortedplayerList:
-        player_leaders = player_leaders + teamAcronyms[player['Team']] + '    ' + player['Name'] + str(
-            player[checkstat]).rjust(26 - len(str(player['Name']))) + '\n'
-    cursor.close()
-    db_connection.close()
-    # create a title
-    title_score = stat + " Leaders"
-    playersFormatted = "```" + player_leaders + "```"
-    embed = discord.Embed(title=title_score, color=0xeee657)
-    embed.add_field(name="Players", value=playersFormatted)
-    await ctx.send(embed=embed)
-
-@bot.command(name='goalie_leaders',help="type $goalie_leaders followed by the stat you wish to see(ie. $goalie_leaders GAA, SV%, W, GP, SO, L, S) to get the top ten goalies by a certain stat. you can add a second argument to get more goalies, and a third argument to filter by games played. The default stat is save percentage, the default games played is 0, and the default amount of goalies is ten. For example $goalie_leaders will give you the top ten goalies in save percentage out of all goalies. $goalie_leaders GAA 15 10 will give you the top 15 goalies in GAA who have played more than 10 games")
-async def goalie_leaders(ctx, stat='SV%', amountWanted=10, GamesWanted = 0):
-    db_connection = mysql.connect(host=HOST, user=USER, password=PASSWORD, database=DATABASE)
-    cursor = db_connection.cursor(buffered=True)
-    cursor.execute("select database();")
-    teamsIdMatchingDict = {}
-    cursor.execute("""SELECT Number, Name FROM proteam""")
-    teamsAndIDs = cursor.fetchall()
-    cursor.execute("select MAX(Season_ID) from proteamstandings")
-    Season_ID = cursor.fetchall()
-    cleanedGoalieStats = []
-    tradedGoaliesList = []
-    mergedgoalieList = []
-    for team in teamsAndIDs:
-        teamsIdMatchingDict[team[0]] = team[1]
-    cursor.execute("""SELECT Name, Team, ProGP, ProMinPlay, ProW, ProL, ProOTL, ProShutouts, ProGA, ProSA, Active from goaliestats where Season_ID = (%s) and proGP > 0""", Season_ID[0])
-    allGoaliestats = cursor.fetchall()
-    for goalie in allGoaliestats:
-        cleanedGoalieStats.append({'Name': goalie[0], 'Team': teamsIdMatchingDict[int(goalie[1])], 'GP': goalie[2], 'Minutes': goalie[3], 'Wins': goalie[4], 'Losses': goalie[5], 'OTL': goalie[6], 'SO': goalie[7], 'GA': goalie[8], 'Saves': int(goalie[9]) - int(goalie[8]), 'SA': int(goalie[9]), 'currentTeam': goalie[10]})
-    for goalie in cleanedGoalieStats:
-        if goalie['currentTeam'] == 'False':
-            tradedGoaliesList.append(goalie)
-    for checkgoalie in cleanedGoalieStats:
-        for comparedgoalie in tradedGoaliesList:
-            if checkgoalie['Name'] == comparedgoalie['Name']:
-                combinedGoalie = {'Name': checkgoalie['Name'], 'Team': checkgoalie['Team'], 'GP': checkgoalie['GP'] + comparedgoalie['GP'], 'Minutes': checkgoalie['Minutes'] + comparedgoalie['Minutes'], 'Wins': checkgoalie['Wins'] + comparedgoalie['Wins'], 'Losses': checkgoalie['Losses'] + comparedgoalie['Losses'], 'OTL': checkgoalie['OTL'] + comparedgoalie['OTL'], 'SO': checkgoalie['SO'] + comparedgoalie['SO'], 'GA': checkgoalie['GA'] + comparedgoalie['GA'], 'Saves': checkgoalie['Saves'] + comparedgoalie['Saves'], 'SA': checkgoalie['SA'] + comparedgoalie['SA'], 'currentTeam': checkgoalie['currentTeam']}
-            else:
-                combinedGoalie = checkgoalie
-        mergedgoalieList.append(combinedGoalie)
-    for goalie in mergedgoalieList:
-        if goalie['currentTeam'] == 'False':
-            mergedgoalieList.remove(goalie)
-    for goalie in mergedgoalieList:
-        goalie['GP'] = int(goalie['GP'])
-        goalie['SVP'] = round(goalie['Saves']/(goalie['Saves'] + goalie['GA']), 3)
-        goalie['GAA'] = round(goalie['GA']/(goalie['Minutes']/3600), 2)
-
-    if stat == 'GAA':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (k['GAA']))
-        checkstat = 'GAA'
-    if stat == 'SV%':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['SVP']))
-        checkstat = 'SVP'
-    if stat == 'W':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['Wins']))
-        checkstat = 'Wins'
-    if stat == 'GP':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['GP']))
-        checkstat = 'GP'
-    if stat == 'SO':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['SO']))
-        checkstat = 'SO'
-    if stat == 'L':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['Losses']))
-        checkstat = 'Losses'
-    if stat == 'S':
-        sortedGoalieList = sorted(mergedgoalieList, key=lambda k: (-k['Saves']))
-        checkstat = 'Saves'
-    if len(sortedGoalieList) < amountWanted:
-        amountWanted = len(sortedGoalieList)
-    finalList = [x for x in sortedGoalieList if x['GP'] >= GamesWanted][:int(amountWanted)]
-    goalie_leaders = 'Team' + 'goalie'.rjust(10) + stat.rjust(16) + '\n'
-    for goalie in finalList:
-        goalie_leaders = goalie_leaders + teamAcronyms[goalie['Team']] + '     ' + goalie['Name'] + str(goalie[checkstat]).rjust(22 - len(str(goalie['Name']))) + '\n'
-    cursor.close()
-    db_connection.close()
-    #create a title
-    title_score = "Goalie Leaders for " + stat
-    goaliesFormatted = "```" + goalie_leaders + "```"
-    embed = discord.Embed(title=title_score, color=0xeee657)
-    embed.add_field(name="Goalies", value=goaliesFormatted)
-    await ctx.send(embed=embed)
+@bot.command(name='scoring_leaders', help="type $scoring_leaders followed by the team you want to filter by, then the position, then the stat for example $scoring_leaders Flames D Goals will give you the flames Defence Goal leaders, $scoring_leaders all F Hits will give you the forward hit leaders for the entire league. positions are C, RW, LW, D. available stats are Points, Goals, Assists, Hits, Pims, +/-, Shots, ShotsBlocked, and GWG. If a team has a space in it's name it requires an underscore ie. $scoring_leaders Golden_Knights")
+async def scoring_leaders(ctx, team_selected: str = 'all', position: str = 'all', stat: str = 'Points'):
+    """Display scoring leaders for specified criteria."""
+    try:
+        season_id = TeamDataManager.get_current_season_id()
+        team_selected = TeamDataManager.clean_team_name(team_selected)
+        
+        # Get player stats
+        player_stats = PlayerStatsManager.get_player_stats(season_id)
+        merged_players = PlayerDataManager.merge_traded_players(player_stats)
+        players_with_positions = PlayerDataManager.add_positions_to_players(merged_players)
+        
+        # Filter players
+        filtered_players = PlayerStatsManager.filter_players_by_team_and_position(
+            players_with_positions, team_selected, position
+        )
+        
+        # Sort players
+        sorted_players = PlayerStatsManager.sort_players_by_stat(filtered_players, stat)
+        
+        # Limit to top 10
+        amount_to_display = min(10, len(sorted_players))
+        top_players = sorted_players[:amount_to_display]
+        
+        if not top_players:
+            await ctx.send("No players found matching the specified criteria.")
+            return
+        
+        # Format and display
+        player_leaders = PlayerStatsManager.format_player_leaders(top_players, stat)
+        players_formatted = f"```{player_leaders}```"
+        
+        embed = discord.Embed(title=f"{stat} Leaders", color=0xeee657)
+        embed.add_field(name="Players", value=players_formatted)
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"Error retrieving scoring leaders: {str(e)}")
 
 
+@bot.command(name='goalie_leaders', help="type $goalie_leaders followed by the stat you wish to see(ie. $goalie_leaders GAA, SV%, W, GP, SO, L, S) to get the top ten goalies by a certain stat. you can add a second argument to get more goalies, and a third argument to filter by games played. The default stat is save percentage, the default games played is 0, and the default amount of goalies is ten. For example $goalie_leaders will give you the top ten goalies in save percentage out of all goalies. $goalie_leaders GAA 15 10 will give you the top 15 goalies in GAA who have played more than 10 games")
+async def goalie_leaders(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_wanted: int = 0):
+    """Display goalie leaders for specified criteria."""
+    try:
+        season_id = TeamDataManager.get_current_season_id()
+        
+        # Get goalie stats
+        goalie_stats = GoalieStatsManager.get_goalie_stats(season_id)
+        merged_goalies = GoalieStatsManager.merge_traded_goalies(goalie_stats)
+        goalies_with_stats = GoalieStatsManager.calculate_goalie_stats(merged_goalies)
+        
+        # Filter by games played
+        filtered_goalies = [g for g in goalies_with_stats if g['GP'] >= games_wanted]
+        
+        # Sort goalies
+        sorted_goalies = GoalieStatsManager.sort_goalies_by_stat(filtered_goalies, stat)
+        
+        # Limit to requested amount
+        amount_to_display = min(amount_wanted, len(sorted_goalies))
+        top_goalies = sorted_goalies[:amount_to_display]
+        
+        if not top_goalies:
+            await ctx.send("No goalies found matching the specified criteria.")
+            return
+        
+        # Format and display
+        goalie_leaders = GoalieStatsManager.format_goalie_leaders(top_goalies, stat)
+        goalies_formatted = f"```{goalie_leaders}```"
+        
+        embed = discord.Embed(title=f"Goalie Leaders for {stat}", color=0xeee657)
+        embed.add_field(name="Goalies", value=goalies_formatted)
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"Error retrieving goalie leaders: {str(e)}")
 
 
-
-bot.run(TOKEN)
+# Run the bot
+if __name__ == "__main__":
+    bot.run(TOKEN)
