@@ -18,13 +18,13 @@ PASSWORD = os.environ.get('DBPASSWORD')
 
 # Team acronyms mapping
 TEAM_ACRONYMS = {
-    'North Stars': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 
-    'Savage': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 
+    'Wild': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 
+    'Sharks': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Whalers': 'CAR', 'Predators': 'NSH', 
     'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR', 'Oilers': 'EDM', 'Islanders': 'NYI', 
     'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CAL', 'Capitals': 'WSH', 'Stars': 'DAL', 
     'Canucks': 'VAN', 'Sabres': 'BUF', 'Lightning': 'TBL', 'Coyotes': 'ARZ', 'Blue Jackets': 'CBJ', 
     'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MON', 'Bruins': 'BOS', 'Flyers': 'PHI', 
-    'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA'
+    'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA', 'Mammoth': 'ARZ',
 }
 
 # Bot setup
@@ -695,4 +695,5 @@ async def goalie_leaders(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_
 
 # Run the bot
 if __name__ == "__main__":
+    print("Starting Discord bot... (press Ctrl+C to quit)")
     bot.run(TOKEN)
