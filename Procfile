@@ -1,1 +1,1 @@
-worker: python3 simBot.py
+worker: python bot.py
