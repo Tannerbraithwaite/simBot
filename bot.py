@@ -531,19 +531,25 @@ class ScoresManager:
             print(f"DEBUG: Game: '{v_team}' vs '{h_team}' (scores: {v_score_int}-{h_score_int})")
             print(f"DEBUG: Comparing '{v_team_clean}' == '{team1_clean.lower()}' and '{h_team_clean}' == '{team2_clean.lower()}'")
             
+            # Check if overtime game first
+            is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie)
+            
             # Determine which team is which (case-insensitive comparison)
             if v_team_clean == team1_clean.lower() and h_team_clean == team2_clean.lower():
                 print(f"DEBUG: MATCH! team1 ({team1_clean}) is away, team2 ({team2_clean}) is home")
                 # team1 is away, team2 is home
                 if v_score_int > h_score_int:
+                    # team1 wins, team2 loses
                     team1_wins += 1
-                    team2_losses += 1
-                    print(f"DEBUG: team1 wins, team2 loses")
+                    if is_ot:
+                        team2_otl += 1
+                        print(f"DEBUG: team1 wins, team2 gets OTL ({overtime_type})")
+                    else:
+                        team2_losses += 1
+                        print(f"DEBUG: team1 wins, team2 gets regular loss")
                 elif v_score_int < h_score_int:
+                    # team2 wins, team1 loses
                     team2_wins += 1
-                    # Check if this was an OTL for team1
-                    is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie)
-                    print(f"DEBUG: Game {v_team} vs {h_team} - team1 loses, Overtime: {is_ot}, Type: {overtime_type}")
                     if is_ot:
                         team1_otl += 1
                         print(f"DEBUG: team2 wins, team1 gets OTL ({overtime_type})")
@@ -559,10 +565,8 @@ class ScoresManager:
                 print(f"DEBUG: MATCH! team2 ({team2_clean}) is away, team1 ({team1_clean}) is home")
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
+                    # team2 wins, team1 loses
                     team2_wins += 1
-                    # Check if this was an OTL for team1
-                    is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie)
-                    print(f"DEBUG: Game {v_team} vs {h_team} - team1 loses, Overtime: {is_ot}, Type: {overtime_type}")
                     if is_ot:
                         team1_otl += 1
                         print(f"DEBUG: team2 wins, team1 gets OTL ({overtime_type})")
@@ -570,10 +574,8 @@ class ScoresManager:
                         team1_losses += 1
                         print(f"DEBUG: team2 wins, team1 gets regular loss")
                 elif v_score_int < h_score_int:
+                    # team1 wins, team2 loses
                     team1_wins += 1
-                    # Check if this was an OTL for team2
-                    is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie)
-                    print(f"DEBUG: Game {v_team} vs {h_team} - team2 loses, Overtime: {is_ot}, Type: {overtime_type}")
                     if is_ot:
                         team2_otl += 1
                         print(f"DEBUG: team1 wins, team2 gets OTL ({overtime_type})")
