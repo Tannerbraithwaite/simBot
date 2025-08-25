@@ -467,9 +467,13 @@ class ScoresManager:
         # Add separator line
         result += "--------------------------------------------------\n"
         
-        # Add head-to-head record if both teams are specified
+        # Add head-to-head record if both teams are specified, or overall record if only one team
         if team1 and team2 and team2 != 'all':
             record = ScoresManager.calculate_head_to_head_record(games, team1, team2)
+            result += f"Record: {record}\n"
+        elif team1 and team2 == 'all':
+            # Show overall record for the single team
+            record = ScoresManager.calculate_team_overall_record(games, team1)
             result += f"Record: {record}\n"
         
         return result
@@ -574,6 +578,62 @@ class ScoresManager:
         team2_acronym = TEAM_ACRONYMS.get(team2, team2)
         
         return f"{team1_acronym}: {team1_wins}-{team1_losses}-{team1_otl} vs {team2_acronym}: {team2_wins}-{team2_losses}-{team2_otl}"
+    
+    @staticmethod
+    def calculate_team_overall_record(games: List[Tuple], team: str) -> str:
+        """Calculate overall record for a single team from the given games using NHL W-L-OTL format."""
+        wins = 0
+        losses = 0
+        otl = 0
+        
+        # Clean team name for comparison
+        team_clean = TeamDataManager.clean_team_name(team.lower())
+        
+        for game in games:
+            # Unpack game data - now includes goalie information
+            if len(game) >= 7:  # New format with goalie fields
+                date_val, v_team, v_score, h_team, h_score, v_goalie, h_goalie = game
+            else:  # Fallback to old format
+                date_val, v_team, v_score, h_team, h_score = game
+                v_goalie, h_goalie = None, None
+            
+            v_score_int, h_score_int = int(float(v_score)), int(float(h_score))
+            
+            # Clean the team names from the database for comparison
+            v_team_clean = v_team.lower()
+            h_team_clean = h_team.lower()
+            
+            # Check if this team is in the game
+            if v_team_clean == team_clean:
+                # Team is away
+                if v_score_int > h_score_int:
+                    wins += 1
+                elif v_score_int < h_score_int:
+                    # Check if this was an OTL
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                        otl += 1
+                    else:
+                        losses += 1
+                else:
+                    # Tie - treat as OTL
+                    otl += 1
+            elif h_team_clean == team_clean:
+                # Team is home
+                if h_score_int > v_score_int:
+                    wins += 1
+                elif h_score_int < v_score_int:
+                    # Check if this was an OTL
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                        otl += 1
+                    else:
+                        losses += 1
+                else:
+                    # Tie - treat as OTL
+                    otl += 1
+        
+        # Format the record using NHL W-L-OTL format
+        team_acronym = TEAM_ACRONYMS.get(team, team)
+        return f"{team_acronym}: {wins}-{losses}-{otl}"
 
     @staticmethod
     def parse_goalie_minutes(goalie_data: str) -> int:
