@@ -569,8 +569,14 @@ class ScoresManager:
                         print(f"DEBUG: team2 wins, team1 gets regular loss")
                 elif v_score_int < h_score_int:
                     team1_wins += 1
-                    team2_losses += 1
-                    print(f"DEBUG: team1 wins, team2 loses")
+                    # Check if this was an OTL for team2
+                    is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie)
+                    if is_ot:
+                        team2_otl += 1
+                        print(f"DEBUG: team1 wins, team2 gets OTL ({overtime_type})")
+                    else:
+                        team2_losses += 1
+                        print(f"DEBUG: team1 wins, team2 gets regular loss")
                 else:
                     # Tie - this shouldn't happen in modern NHL, but handle it as OTL
                     team1_otl += 1
