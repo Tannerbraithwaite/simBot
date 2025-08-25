@@ -726,13 +726,13 @@ class ScoresManager:
         
         # Check if either goalie played more than 60 minutes
         max_minutes = max(v_minutes, h_minutes)
-        if max_minutes >= 60:  # Changed from > 60 to >= 60
+        if max_minutes > 60:  # Exactly 60:00 is regulation time, not overtime
             # Determine if it's a shootout (exactly 65:00) or overtime (more than 65:00)
             if abs(max_minutes - 65.0) < 0.01:  # Allow for small floating point differences
                 print(f"DEBUG: Is shootout game: True (exactly 65 minutes)")
                 return True, "SO"
             else:
-                print(f"DEBUG: Is overtime game: True (60+ minutes)")
+                print(f"DEBUG: Is overtime game: True (more than 60 minutes)")
                 return True, "OT"
         else:
             print(f"DEBUG: Is overtime game: False")
