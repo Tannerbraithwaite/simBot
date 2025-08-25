@@ -80,7 +80,8 @@ class TeamDataManager:
     
     @staticmethod
     def clean_team_name(team_name: str) -> str:
-        """Clean team name by replacing underscores with spaces."""
+        """Clean team name by replacing underscores with spaces and handling common variations."""
+        # Handle underscores first
         replacements = {
             'Red_Wings': 'Red Wings',
             'Blue_Jackets': 'Blue Jackets',
@@ -88,7 +89,51 @@ class TeamDataManager:
             'Maple_Leafs': 'Maple Leafs',
             'Golden_Knights': 'Golden Knights'
         }
-        return replacements.get(team_name, team_name)
+        
+        # Apply underscore replacements
+        cleaned = replacements.get(team_name, team_name)
+        
+        # Handle common case variations and abbreviations
+        team_variations = {
+            'panthers': 'Panthers',
+            'rangers': 'Rangers',
+            'oilers': 'Oilers',
+            'flames': 'Flames',
+            'canucks': 'Canucks',
+            'bruins': 'Bruins',
+            'leafs': 'Maple Leafs',
+            'maple leafs': 'Maple Leafs',
+            'kings': 'Kings',
+            'ducks': 'Ducks',
+            'sharks': 'Sharks',
+            'jets': 'Jets',
+            'blues': 'Blues',
+            'wild': 'Wild',
+            'avalanche': 'Avalanche',
+            'stars': 'Stars',
+            'blackhawks': 'Blackhawks',
+            'predators': 'Predators',
+            'lightning': 'Lightning',
+            'capitals': 'Capitals',
+            'islanders': 'Islanders',
+            'devils': 'Devils',
+            'flyers': 'Flyers',
+            'penguins': 'Penguins',
+            'senators': 'Senators',
+            'sabres': 'Sabres',
+            'red wings': 'Red Wings',
+            'blue jackets': 'Blue Jackets',
+            'golden knights': 'Golden Knights',
+            'coyotes': 'Coyotes',
+            'kraken': 'Kraken'
+        }
+        
+        # Check for variations (case-insensitive)
+        for variation, official_name in team_variations.items():
+            if cleaned.lower() == variation.lower():
+                return official_name
+        
+        return cleaned
 
 
 class PlayerDataManager:
