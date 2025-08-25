@@ -477,6 +477,10 @@ class ScoresManager:
         team2_clean = TeamDataManager.clean_team_name(team2.lower())
         
         print(f"DEBUG: Looking for teams: '{team1}' -> cleaned to '{team1_clean}' and '{team2}' -> cleaned to '{team2_clean}'")
+        print(f"DEBUG: First few games to see actual database team names:")
+        for i, game in enumerate(games[:3]):
+            if len(game) >= 5:
+                print(f"DEBUG: Game {i+1}: '{game[1]}' vs '{game[3]}'")
         
         for game in games:
             # Unpack game data - now includes goalie information
