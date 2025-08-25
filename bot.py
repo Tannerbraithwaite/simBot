@@ -665,16 +665,42 @@ class ScoresManager:
             return 0
         
         try:
-            # Look for pattern like "65:30 minutes" or "60:00 minutes"
+            print(f"DEBUG: Raw goalie data: '{goalie_data}'")
+            
+            # Look for pattern like "65:00 minutes" at the end of the string
             if "minutes" in goalie_data:
-                # Extract the time part before "minutes" and trim whitespace
-                time_part = goalie_data.split("minutes")[0].strip()
-                if ":" in time_part:
-                    minutes, seconds = time_part.split(":")
-                    # Trim whitespace from both parts before converting
-                    total_minutes = float(minutes.strip()) + float(seconds.strip()) / 60.0
-                    print(f"DEBUG: Parsed goalie data '{goalie_data}' -> {total_minutes} minutes")
-                    return total_minutes
+                # Find the last occurrence of "minutes" and extract everything before it
+                minutes_index = goalie_data.rfind("minutes")
+                if minutes_index > 0:
+                    # Get the part before "minutes" and trim
+                    before_minutes = goalie_data[:minutes_index].strip()
+                    print(f"DEBUG: Before 'minutes': '{before_minutes}'")
+                    
+                    # Look for the last time pattern (MM:SS) in the string
+                    # Split by spaces and find the last part that contains ":"
+                    parts = before_minutes.split()
+                    time_part = None
+                    
+                    # Look backwards through the parts to find the time
+                    for part in reversed(parts):
+                        if ":" in part and len(part.split(":")) == 2:
+                            time_part = part
+                            break
+                    
+                    if time_part:
+                        print(f"DEBUG: Found time part: '{time_part}'")
+                        minutes, seconds = time_part.split(":")
+                        # Trim whitespace and convert
+                        total_minutes = float(minutes.strip()) + float(seconds.strip()) / 60.0
+                        print(f"DEBUG: Parsed goalie data '{goalie_data}' -> {total_minutes} minutes")
+                        return total_minutes
+                    else:
+                        print(f"DEBUG: No time pattern found in parts: {parts}")
+                else:
+                    print(f"DEBUG: 'minutes' found but at position 0")
+            else:
+                print(f"DEBUG: No 'minutes' found in goalie data")
+            
             return 0
         except Exception as e:
             print(f"DEBUG: Error parsing goalie data '{goalie_data}': {e}")
