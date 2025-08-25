@@ -752,6 +752,69 @@ class ScoresManager:
             return False, ""
 
 
+class TradeManager:
+    """Handles trade-related data operations."""
+    
+    @staticmethod
+    def get_trades_by_player(player_name: str, limit: int = 10) -> List[Tuple]:
+        """Get all trades involving a specific player, limited to specified number."""
+        # Clean player name for search (handle underscores and case)
+        cleaned_name = player_name.replace('_', ' ').lower()
+        
+        query = """
+        SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+               Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
+        FROM transactions 
+        WHERE (LOWER(Team1List) LIKE %s OR LOWER(Team2List) LIKE %s)
+        AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
+        ORDER BY DateCreated DESC
+        LIMIT %s
+        """
+        
+        search_pattern = f"%{cleaned_name}%"
+        return DatabaseManager.execute_query(query, (search_pattern, search_pattern, limit))
+    
+    @staticmethod
+    def get_team_name(team_id: int) -> str:
+        """Get team name from team ID."""
+        result = DatabaseManager.execute_query("SELECT Name FROM proteam WHERE Number = %s", (team_id,))
+        return result[0][0] if result else f"Team {team_id}"
+    
+    @staticmethod
+    def format_trade_history(trades: List[Tuple], player_name: str) -> str:
+        """Format trade history for display."""
+        if not trades:
+            return f"No trades found for {player_name.title()}."
+        
+        result = f"Trade History for {player_name.title()}\n"
+        result += "=" * 50 + "\n\n"
+        
+        for trade in trades:
+            t_id, date_created, team1_id, team2_id, team1_list, team2_list, \
+            team1_approved, team2_approved, commish_approved, future_considerations = trade
+            
+            # Get team names
+            team1_name = TradeManager.get_team_name(team1_id)
+            team2_name = TradeManager.get_team_name(team2_id)
+            
+            # Format date
+            date_str = str(date_created).split(' ')[0] if date_created else "Unknown"
+            
+            # Format trade details
+            result += f"**Trade #{t_id}** - {date_str}\n"
+            result += f"**{team1_name}** receives:\n"
+            result += f"```{team1_list}```\n"
+            result += f"**{team2_name}** receives:\n"
+            result += f"```{team2_list}```\n"
+            
+            if future_considerations and future_considerations != "NULL":
+                result += f"**Future Considerations:** {future_considerations}\n"
+            
+            result += "-" * 30 + "\n\n"
+        
+        return result
+
+
 class PlayerStatsManager:
     """Handles player statistics operations."""
     
@@ -1173,6 +1236,26 @@ async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 1
         await ctx.send(embed=embed)
     except Exception as e:
         await ctx.send(f"Error retrieving games: {str(e)}")
+
+
+@bot.command(name='trades_by_player', help="Usage: $trades_by_player <player_name> [limit]. Examples:\n$trades_by_player Mikael_backlund\n$trades_by_player Mikael_backlund 1")
+async def trades_by_player(ctx, player_name: str, limit: int = 10):
+    """Display trade history for a specific player."""
+    try:
+        # Clamp limit to reasonable range
+        limit = min(max(int(limit), 1), 50)
+        
+        trades = TradeManager.get_trades_by_player(player_name, limit)
+        if not trades:
+            await ctx.send(f"No trade history found for {player_name.title()}.")
+            return
+        
+        trade_history_formatted = TradeManager.format_trade_history(trades, player_name)
+        embed = discord.Embed(title=f"Trade History for {player_name.title()}", color=0xeee657)
+        embed.add_field(name="Trade History", value=trade_history_formatted, inline=False)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"Error retrieving trade history: {str(e)}")
 
 
 # Run the bot
