@@ -1250,10 +1250,18 @@ async def trades_by_player(ctx, player_name: str, limit: int = 10):
             await ctx.send(f"No trade history found for {player_name.title()}.")
             return
         
+        # Check if we need to split into multiple messages due to Discord limits
         trade_history_formatted = TradeManager.format_trade_history(trades, player_name)
-        embed = discord.Embed(title=f"Trade History for {player_name.title()}", color=0xeee657)
-        embed.add_field(name="Trade History", value=trade_history_formatted, inline=False)
-        await ctx.send(embed=embed)
+        
+        # If the formatted history is too long, send it as a code block instead of embed
+        if len(trade_history_formatted) > 1900:  # Leave some buffer for Discord limits
+            await ctx.send(f"```{trade_history_formatted}```")
+        else:
+            # Use embed for shorter trade histories
+            embed = discord.Embed(title=f"Trade History for {player_name.title()}", color=0xeee657)
+            embed.add_field(name="Trade History", value=trade_history_formatted, inline=False)
+            await ctx.send(embed=embed)
+            
     except Exception as e:
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
