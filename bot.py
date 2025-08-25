@@ -667,11 +667,12 @@ class ScoresManager:
         try:
             # Look for pattern like "65:30 minutes" or "60:00 minutes"
             if "minutes" in goalie_data:
-                # Extract the time part before "minutes"
+                # Extract the time part before "minutes" and trim whitespace
                 time_part = goalie_data.split("minutes")[0].strip()
                 if ":" in time_part:
                     minutes, seconds = time_part.split(":")
-                    total_minutes = float(minutes) + float(seconds) / 60.0
+                    # Trim whitespace from both parts before converting
+                    total_minutes = float(minutes.strip()) + float(seconds.strip()) / 60.0
                     print(f"DEBUG: Parsed goalie data '{goalie_data}' -> {total_minutes} minutes")
                     return total_minutes
             return 0
