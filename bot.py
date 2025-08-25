@@ -299,6 +299,47 @@ class ScoresManager:
                 game_date = today
         
         return games, str(game_date)
+
+    # NEW METHOD
+    @staticmethod
+    def get_recent_games_for_team(team1: str, team2: str = "all", limit: int = 10) -> List[Tuple]:
+        """Return most recent games for team1 (optionally against team2) limited to `limit` games.
+        Returns list ordered newest -> oldest with fields (Date, VisitorTeam, VisitorScore, HomeTeam, HomeScore).
+        """
+        # Clean names (handle underscores)
+        team1 = TeamDataManager.clean_team_name(team1)
+        team2 = TeamDataManager.clean_team_name(team2)
+
+        if team2 != "all":
+            query = (
+                """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                "FROM todaysgame "
+                "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
+                "ORDER BY Date DESC LIMIT %s"""
+            )
+            params = (team1, team2, team2, team1, limit)
+        else:
+            query = (
+                """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                "FROM todaysgame "
+                "WHERE VisitorTeam = %s OR HomeTeam = %s "
+                "ORDER BY Date DESC LIMIT %s"""
+            )
+            params = (team1, team1, limit)
+
+        return DatabaseManager.execute_query(query, params)
+
+    @staticmethod
+    def format_games_list(games: List[Tuple]) -> str:
+        """Format list of games for display."""
+        formatted = "Date              Away                Home\n"
+        for game in games:
+            date_val, v_team, v_score, h_team, h_score = game
+            date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, 'strftime') else str(date_val)[:10]
+            away_line = f"{TEAM_ACRONYMS.get(v_team, v_team)} {int(v_score)}"
+            home_line = f"{TEAM_ACRONYMS.get(h_team, h_team)} {int(h_score)}"
+            formatted += (f"{date_str}  {away_line.ljust(12)}  {home_line}\n")
+        return formatted
     
     @staticmethod
     def format_game_scores(games: List[Tuple]) -> str:
@@ -691,6 +732,34 @@ async def goalie_leaders(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_
         
     except Exception as e:
         await ctx.send(f"Error retrieving goalie leaders: {str(e)}")
+
+
+@bot.command(name='scores_by_team', help="Usage: $scores_by_team <team1> [team2|all] [num_games]. Examples:\n$scores_by_team Oilers\n$scores_by_team Oilers Canucks\n$scores_by_team Oilers all 20")
+async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 10):
+    """Return recent games for a team, optionally head-to-head, limited to num_games."""
+    try:
+        # Convert num_games if user swapped order (team2 may be numeric)
+        if team2.isdigit():
+            num_games = int(team2)
+            team2 = 'all'
+        else:
+            # third arg may override num_games
+            # ctx.message.content split handled by discord.py but easier parse using *args; here we rely on signature default
+            pass
+        # Clamp
+        num_games = min(max(int(num_games), 1), 82)
+
+        games = ScoresManager.get_recent_games_for_team(team1, team2, num_games)
+        if not games:
+            await ctx.send("No games found matching those criteria.")
+            return
+        games_formatted = ScoresManager.format_games_list(games)
+        embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '')
+        embed = discord.Embed(title=embed_title, color=0xeee657)
+        embed.add_field(name="Games", value=f"```{games_formatted}```", inline=False)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"Error retrieving games: {str(e)}")
 
 
 # Run the bot
