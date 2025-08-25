@@ -447,6 +447,10 @@ class ScoresManager:
             # Check if this was an overtime game
             is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else (False, "")
             
+            # Debug output for display formatting
+            if v_goalie and h_goalie:
+                print(f"DEBUG: Display formatting - Game: {v_team} vs {h_team}, Overtime: {is_ot}, Type: {overtime_type}")
+            
             # Format scores with OT indicator if applicable - convert to integers
             v_score_int = int(float(v_score))
             h_score_int = int(float(h_score))
