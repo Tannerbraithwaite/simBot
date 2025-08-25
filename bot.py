@@ -409,10 +409,13 @@ class ScoresManager:
 
     @staticmethod
     def calculate_head_to_head_record(games: List[Tuple], team1: str, team2: str) -> str:
-        """Calculate head-to-head record between two teams from the given games."""
+        """Calculate head-to-head record between two teams from the given games using NHL W-L-OTL format."""
         team1_wins = 0
+        team1_losses = 0
+        team1_otl = 0
         team2_wins = 0
-        ties = 0
+        team2_losses = 0
+        team2_otl = 0
         
         # Clean team names for comparison (handle case and underscores)
         team1_clean = TeamDataManager.clean_team_name(team1.lower())
@@ -431,27 +434,32 @@ class ScoresManager:
                 # team1 is away, team2 is home
                 if v_score_int > h_score_int:
                     team1_wins += 1
+                    team2_losses += 1
                 elif v_score_int < h_score_int:
                     team2_wins += 1
+                    team1_losses += 1
                 else:
-                    ties += 1
+                    # Tie - in NHL this would be an OTL for both teams
+                    team1_otl += 1
+                    team2_otl += 1
             elif v_team_clean == team2_clean and h_team_clean == team1_clean:
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
                     team2_wins += 1
+                    team1_losses += 1
                 elif v_score_int < h_score_int:
                     team1_wins += 1
+                    team2_losses += 1
                 else:
-                    ties += 1
+                    # Tie - in NHL this would be an OTL for both teams
+                    team1_otl += 1
+                    team2_otl += 1
         
-        # Format the record using the original team names (not cleaned)
+        # Format the record using NHL W-L-OTL format
         team1_acronym = TEAM_ACRONYMS.get(team1, team1)
         team2_acronym = TEAM_ACRONYMS.get(team2, team2)
         
-        if ties > 0:
-            return f"{team1_acronym}: {team1_wins}-{team2_wins}-{ties} vs {team2_acronym}: {team2_wins}-{team1_wins}-{ties}"
-        else:
-            return f"{team1_acronym}: {team1_wins}-{team2_wins} vs {team2_acronym}: {team2_wins}-{team1_wins}"
+        return f"{team1_acronym}: {team1_wins}-{team1_losses}-{team1_otl} vs {team2_acronym}: {team2_wins}-{team2_losses}-{team2_otl}"
 
 
 class PlayerStatsManager:
