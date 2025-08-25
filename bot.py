@@ -365,10 +365,16 @@ class ScoresManager:
         return DatabaseManager.execute_query(query, params)
 
     @staticmethod
-    def format_games_list(games: List[Tuple]) -> str:
-        """Format list of games for display."""
+    def format_games_list(games: List[Tuple], team1: str = None, team2: str = None) -> str:
+        """Format list of games for display with optional head-to-head record."""
         formatted = "Date              Away                Home\n"
         formatted += "-" * 50 + "\n"  # Add separator line
+        
+        # Calculate head-to-head record if both teams are specified
+        h2h_record = None
+        if team1 and team2 and team2 != "all":
+            h2h_record = ScoresManager.calculate_head_to_head_record(games, team1, team2)
+        
         for game in games:
             date_val, v_team, v_score, h_team, h_score = game
             date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, 'strftime') else str(date_val)[:10]
@@ -383,6 +389,12 @@ class ScoresManager:
             
             # Use fixed-width formatting to align columns
             formatted += f"{date_str}  {away_display:<20} {home_display}\n"
+        
+        # Add head-to-head record at the bottom if available
+        if h2h_record:
+            formatted += "-" * 50 + "\n"  # Add separator line
+            formatted += f"Record: {h2h_record}\n"
+        
         return formatted
     
     @staticmethod
@@ -394,6 +406,44 @@ class ScoresManager:
             game_scores += (f"{visitor_team}{str(int(visitor_score)).rjust(20 - len(visitor_team))}\n"
                           f"{home_team}{str(int(home_score)).rjust(20 - len(home_team))}\n\n")
         return game_scores
+
+    @staticmethod
+    def calculate_head_to_head_record(games: List[Tuple], team1: str, team2: str) -> str:
+        """Calculate head-to-head record between two teams from the given games."""
+        team1_wins = 0
+        team2_wins = 0
+        ties = 0
+        
+        for game in games:
+            v_team, v_score, h_team, h_score = game[1], game[2], game[3], game[4]
+            v_score_int, h_score_int = int(v_score), int(h_score)
+            
+            # Determine which team is which
+            if v_team == team1 and h_team == team2:
+                # team1 is away, team2 is home
+                if v_score_int > h_score_int:
+                    team1_wins += 1
+                elif v_score_int < h_score_int:
+                    team2_wins += 1
+                else:
+                    ties += 1
+            elif v_team == team2 and h_team == team1:
+                # team2 is away, team1 is home
+                if v_score_int > h_score_int:
+                    team2_wins += 1
+                elif v_score_int < h_score_int:
+                    team1_wins += 1
+                else:
+                    ties += 1
+        
+        # Format the record
+        team1_acronym = TEAM_ACRONYMS.get(team1, team1)
+        team2_acronym = TEAM_ACRONYMS.get(team2, team2)
+        
+        if ties > 0:
+            return f"{team1_acronym}: {team1_wins}-{team2_wins}-{ties} vs {team2_acronym}: {team2_wins}-{team1_wins}-{ties}"
+        else:
+            return f"{team1_acronym}: {team1_wins}-{team2_wins} vs {team2_acronym}: {team2_wins}-{team1_wins}"
 
 
 class PlayerStatsManager:
@@ -804,7 +854,7 @@ async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 1
             await ctx.send(f"No games found for {team1.title()} {season_context} matching those criteria.")
             return
         
-        games_formatted = ScoresManager.format_games_list(games)
+        games_formatted = ScoresManager.format_games_list(games, team1, team2)
         
         # Create appropriate title based on context
         if force_all_seasons:
