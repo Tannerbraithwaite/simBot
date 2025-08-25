@@ -508,6 +508,8 @@ class ScoresManager:
             if len(game) >= 5:
                 print(f"DEBUG: Game {i+1}: '{game[1]}' vs '{game[3]}'")
         
+        print(f"DEBUG: Total games to process: {len(games)}")
+        
         for game in games:
             # Unpack game data - now includes goalie information
             if len(game) >= 7:  # New format with goalie fields
