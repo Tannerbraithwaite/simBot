@@ -920,25 +920,52 @@ class AwardsManager:
     """Handles award-related data operations."""
     
     @staticmethod
-    def get_award_winners(award_name: str = None, season_id: int = None) -> List[Tuple]:
+    def get_award_winners(award_name: str = None, season_id: str = None) -> List[Tuple]:
         """Get award winners for a specific award and season, or all awards for a season."""
-        if season_id is None:
-            # Get the most recent season ID
-            season_result = DatabaseManager.execute_query("SELECT MAX(Season_ID) FROM awards")
+        if season_id == "all" and award_name:
+            # Get all historical winners for a specific award
+            query = """
+            SELECT T_ID, PlayoffMVP, TopScorer, MVP, GoalieOfTheYear, DefensemanOfTheYear, 
+                   RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, 
+                   TopGoalScorer, LowestGAA, LowestPIM, GeneralManager, FarmPlayoffMVP, FarmTopScorer, 
+                   FarmMVP, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, 
+                   FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, 
+                   FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM, Team, Season_ID
+            FROM trophywinners 
+            WHERE Season_ID IS NOT NULL
+            ORDER BY Season_ID DESC
+            """
+            return DatabaseManager.execute_query(query)
+        elif season_id and season_id != "all":
+            # Get all awards for a specific season
+            query = """
+            SELECT T_ID, PlayoffMVP, TopScorer, MVP, GoalieOfTheYear, DefensemanOfTheYear, 
+                   RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, 
+                   TopGoalScorer, LowestGAA, LowestPIM, GeneralManager, FarmPlayoffMVP, FarmTopScorer, 
+                   FarmMVP, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, 
+                   FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, 
+                   FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM, Team, Season_ID
+            FROM trophywinners 
+            WHERE Season_ID = %s
+            """
+            return DatabaseManager.execute_query(query, (season_id,))
+        else:
+            # Get the most recent season ID if not provided
+            season_result = DatabaseManager.execute_query("SELECT MAX(Season_ID) FROM trophywinners")
             season_id = season_result[0][0] if season_result else 0
-        
-        # Get awards for the season
-        query = """
-        SELECT T_ID, PlayoffMVP, TopScorer, MVP, GoalieOfTheYear, DefensemanOfTheYear, 
-               RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, 
-               TopGoalScorer, LowestGAA, LowestPIM, GeneralManager, FarmPlayoffMVP, FarmTopScorer, 
-               FarmMVP, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, 
-               FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, 
-               FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM, Team, Season_ID
-        FROM awards 
-        WHERE Season_ID = %s
-        """
-        return DatabaseManager.execute_query(query, (season_id,))
+            
+            # Get all awards for the most recent season
+            query = """
+            SELECT T_ID, PlayoffMVP, TopScorer, MVP, GoalieOfTheYear, DefensemanOfTheYear, 
+                   RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, 
+                   TopGoalScorer, LowestGAA, LowestPIM, GeneralManager, FarmPlayoffMVP, FarmTopScorer, 
+                   FarmMVP, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, 
+                   FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, 
+                   FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM, Team, Season_ID
+            FROM trophywinners 
+            WHERE Season_ID = %s
+            """
+            return DatabaseManager.execute_query(query, (season_id,))
     
     @staticmethod
     def get_player_name(player_id: int) -> str:
@@ -956,83 +983,139 @@ class AwardsManager:
         return result[0][0] if result else f"Team {team_id}"
     
     @staticmethod
-    def format_awards(awards: List[Tuple], award_name: str = None, season_id: int = None) -> str:
+    def format_awards(awards: List[Tuple], award_name: str = None, season_id: str = None) -> str:
         """Format awards for display."""
         if not awards:
-            return f"No awards found for season {season_id}."
+            if season_id == "all":
+                return f"No historical data found for {award_name}."
+            else:
+                return f"No awards found for season {season_id}."
         
-        award = awards[0]  # We expect one row per season
-        t_id, playoff_mvp, top_scorer, mvp, goalie_of_year, defenseman_of_year, \
-        rookie_of_year, best_defensive_forward, most_sportsmanlike, coach_of_year, \
-        top_goal_scorer, lowest_gaa, lowest_pim, general_manager, farm_playoff_mvp, \
-        farm_top_scorer, farm_mvp, farm_goalie_of_year, farm_defenseman_of_year, \
-        farm_rookie_of_year, farm_best_defensive_forward, farm_most_sportsmanlike, \
-        farm_coach_of_year, farm_top_goal_scorer, farm_lowest_gaa, farm_lowest_pim, \
-        team, season_id = award
-        
-        # Get team name
-        team_name = AwardsManager.get_team_name(team) if team else "Unknown Team"
-        
-        result = f"**Awards for Season {season_id}**\n"
-        result += f"**Team:** {team_name}\n"
-        result += "=" * 50 + "\n\n"
-        
-        # NHL Awards
-        result += "**🏆 NHL Awards:**\n"
-        if playoff_mvp and playoff_mvp != 0:
-            result += f"**Playoff MVP:** {AwardsManager.get_player_name(playoff_mvp)}\n"
-        if mvp and mvp != 0:
-            result += f"**MVP:** {AwardsManager.get_player_name(mvp)}\n"
-        if top_scorer and top_scorer != 0:
-            result += f"**Top Scorer:** {AwardsManager.get_player_name(top_scorer)}\n"
-        if goalie_of_year and goalie_of_year != 0:
-            result += f"**Goalie of the Year:** {AwardsManager.get_player_name(goalie_of_year)}\n"
-        if defenseman_of_year and defenseman_of_year != 0:
-            result += f"**Defenseman of the Year:** {AwardsManager.get_player_name(defenseman_of_year)}\n"
-        if rookie_of_year and rookie_of_year != 0:
-            result += f"**Rookie of the Year:** {AwardsManager.get_player_name(rookie_of_year)}\n"
-        if best_defensive_forward and best_defensive_forward != 0:
-            result += f"**Best Defensive Forward:** {AwardsManager.get_player_name(best_defensive_forward)}\n"
-        if most_sportsmanlike and most_sportsmanlike != 0:
-            result += f"**Most Sportsmanlike Player:** {AwardsManager.get_player_name(most_sportsmanlike)}\n"
-        if coach_of_year and coach_of_year != 0:
-            result += f"**Coach of the Year:** {AwardsManager.get_player_name(coach_of_year)}\n"
-        if top_goal_scorer and top_goal_scorer != 0:
-            result += f"**Top Goal Scorer:** {AwardsManager.get_player_name(top_goal_scorer)}\n"
-        if lowest_gaa and lowest_gaa != 0:
-            result += f"**Lowest GAA:** {AwardsManager.get_player_name(lowest_gaa)}\n"
-        if lowest_pim and lowest_pim != 0:
-            result += f"**Lowest PIM:** {AwardsManager.get_player_name(lowest_pim)}\n"
-        if general_manager and general_manager != 0:
-            result += f"**General Manager:** {AwardsManager.get_player_name(general_manager)}\n"
-        
-        result += "\n**🏆 Farm Team Awards:**\n"
-        if farm_playoff_mvp and farm_playoff_mvp != 0:
-            result += f"**Farm Playoff MVP:** {AwardsManager.get_player_name(farm_playoff_mvp)}\n"
-        if farm_mvp and farm_mvp != 0:
-            result += f"**Farm MVP:** {AwardsManager.get_player_name(farm_mvp)}\n"
-        if farm_top_scorer and farm_top_scorer != 0:
-            result += f"**Farm Top Scorer:** {AwardsManager.get_player_name(farm_top_scorer)}\n"
-        if farm_goalie_of_year and farm_goalie_of_year != 0:
-            result += f"**Farm Goalie of the Year:** {AwardsManager.get_player_name(farm_goalie_of_year)}\n"
-        if farm_defenseman_of_year and farm_defenseman_of_year != 0:
-            result += f"**Farm Defenseman of the Year:** {AwardsManager.get_player_name(farm_defenseman_of_year)}\n"
-        if farm_rookie_of_year and farm_rookie_of_year != 0:
-            result += f"**Farm Rookie of the Year:** {AwardsManager.get_player_name(farm_rookie_of_year)}\n"
-        if farm_best_defensive_forward and farm_best_defensive_forward != 0:
-            result += f"**Farm Best Defensive Forward:** {AwardsManager.get_player_name(farm_best_defensive_forward)}\n"
-        if farm_most_sportsmanlike and farm_most_sportsmanlike != 0:
-            result += f"**Farm Most Sportsmanlike Player:** {AwardsManager.get_player_name(farm_most_sportsmanlike)}\n"
-        if farm_coach_of_year and farm_coach_of_year != 0:
-            result += f"**Farm Coach of the Year:** {AwardsManager.get_player_name(farm_coach_of_year)}\n"
-        if farm_top_goal_scorer and farm_top_goal_scorer != 0:
-            result += f"**Farm Top Goal Scorer:** {AwardsManager.get_player_name(farm_top_goal_scorer)}\n"
-        if farm_lowest_gaa and farm_lowest_gaa != 0:
-            result += f"**Farm Lowest GAA:** {AwardsManager.get_player_name(farm_lowest_gaa)}\n"
-        if farm_lowest_pim and farm_lowest_pim != 0:
-            result += f"**Farm Lowest PIM:** {AwardsManager.get_player_name(farm_lowest_pim)}\n"
-        
-        return result
+        if season_id == "all" and award_name:
+            # Format historical award winners
+            result = f"**Historical Winners: {award_name}**\n"
+            result += "=" * 50 + "\n\n"
+            
+            for award in awards:
+                t_id, playoff_mvp, top_scorer, mvp, goalie_of_year, defenseman_of_year, \
+                rookie_of_year, best_defensive_forward, most_sportsmanlike, coach_of_year, \
+                top_goal_scorer, lowest_gaa, lowest_pim, general_manager, farm_playoff_mvp, \
+                farm_top_scorer, farm_mvp, farm_goalie_of_year, farm_defenseman_of_year, \
+                farm_rookie_of_year, farm_best_defensive_forward, farm_most_sportsmanlike, \
+                farm_coach_of_year, farm_top_goal_scorer, farm_lowest_gaa, farm_lowest_pim, \
+                team, season_id = award
+                
+                # Get team name
+                team_name = AwardsManager.get_team_name(team) if team else "Unknown Team"
+                
+                # Find the specific award winner
+                winner_id = None
+                if award_name.upper() == "MVP" and mvp:
+                    winner_id = mvp
+                elif award_name.upper() == "PLAYOFFMVP" and playoff_mvp:
+                    winner_id = playoff_mvp
+                elif award_name.upper() == "TOPSCORER" and top_scorer:
+                    winner_id = top_scorer
+                elif award_name.upper() == "GOALIEOFTHEYEAR" and goalie_of_year:
+                    winner_id = goalie_of_year
+                elif award_name.upper() == "DEFENSEMANOFTHEYEAR" and defenseman_of_year:
+                    winner_id = defenseman_of_year
+                elif award_name.upper() == "ROOKIEOFTHEYEAR" and rookie_of_year:
+                    winner_id = rookie_of_year
+                elif award_name.upper() == "BESTDEFENSIVEFORWARD" and best_defensive_forward:
+                    winner_id = best_defensive_forward
+                elif award_name.upper() == "MOSTSPORTSMANLIKEPLAYER" and most_sportsmanlike:
+                    winner_id = most_sportsmanlike
+                elif award_name.upper() == "COACHOFTHEYEAR" and coach_of_year:
+                    winner_id = coach_of_year
+                elif award_name.upper() == "TOPGOALSCORER" and top_goal_scorer:
+                    winner_id = top_goal_scorer
+                elif award_name.upper() == "LOWESTGAA" and lowest_gaa:
+                    winner_id = lowest_gaa
+                elif award_name.upper() == "LOWESTPIM" and lowest_pim:
+                    winner_id = lowest_pim
+                elif award_name.upper() == "GENERALMANAGER" and general_manager:
+                    winner_id = general_manager
+                
+                if winner_id and winner_id != 0:
+                    winner_name = AwardsManager.get_player_name(winner_id)
+                    result += f"**Season {season_id}:** {winner_name} ({team_name})\n"
+                
+            return result
+        else:
+            # Format all awards for a season
+            award = awards[0]  # We expect one row per season
+            t_id, playoff_mvp, top_scorer, mvp, goalie_of_year, defenseman_of_year, \
+            rookie_of_year, best_defensive_forward, most_sportsmanlike, coach_of_year, \
+            top_goal_scorer, lowest_gaa, lowest_pim, general_manager, farm_playoff_mvp, \
+            farm_top_scorer, farm_mvp, farm_goalie_of_year, farm_defenseman_of_year, \
+            farm_rookie_of_year, farm_best_defensive_forward, farm_most_sportsmanlike, \
+            farm_coach_of_year, farm_top_goal_scorer, farm_lowest_gaa, farm_lowest_pim, \
+            team, season_id = award
+            
+            # Get team name
+            team_name = AwardsManager.get_team_name(team) if team else "Unknown Team"
+            
+            result = f"**Awards for Season {season_id}**\n"
+            result += f"**Team:** {team_name}\n"
+            result += "=" * 50 + "\n\n"
+            
+            # NHL Awards
+            result += "**🏆 NHL Awards:**\n"
+            if playoff_mvp and playoff_mvp != 0:
+                result += f"**Playoff MVP:** {AwardsManager.get_player_name(playoff_mvp)}\n"
+            if mvp and mvp != 0:
+                result += f"**MVP:** {AwardsManager.get_player_name(mvp)}\n"
+            if top_scorer and top_scorer != 0:
+                result += f"**Top Scorer:** {AwardsManager.get_player_name(top_scorer)}\n"
+            if goalie_of_year and goalie_of_year != 0:
+                result += f"**Goalie of the Year:** {AwardsManager.get_player_name(goalie_of_year)}\n"
+            if defenseman_of_year and defenseman_of_year != 0:
+                result += f"**Defenseman of the Year:** {AwardsManager.get_player_name(defenseman_of_year)}\n"
+            if rookie_of_year and rookie_of_year != 0:
+                result += f"**Rookie of the Year:** {AwardsManager.get_player_name(rookie_of_year)}\n"
+            if best_defensive_forward and best_defensive_forward != 0:
+                result += f"**Best Defensive Forward:** {AwardsManager.get_player_name(best_defensive_forward)}\n"
+            if most_sportsmanlike and most_sportsmanlike != 0:
+                result += f"**Most Sportsmanlike Player:** {AwardsManager.get_player_name(most_sportsmanlike)}\n"
+            if coach_of_year and coach_of_year != 0:
+                result += f"**Coach of the Year:** {AwardsManager.get_player_name(coach_of_year)}\n"
+            if top_goal_scorer and top_goal_scorer != 0:
+                result += f"**Top Goal Scorer:** {AwardsManager.get_player_name(top_goal_scorer)}\n"
+            if lowest_gaa and lowest_gaa != 0:
+                result += f"**Lowest GAA:** {AwardsManager.get_player_name(lowest_gaa)}\n"
+            if lowest_pim and lowest_pim != 0:
+                result += f"**Lowest PIM:** {AwardsManager.get_player_name(lowest_pim)}\n"
+            if general_manager and general_manager != 0:
+                result += f"**General Manager:** {AwardsManager.get_player_name(general_manager)}\n"
+            
+            result += "\n**🏆 Farm Team Awards:**\n"
+            if farm_playoff_mvp and farm_playoff_mvp != 0:
+                result += f"**Farm Playoff MVP:** {AwardsManager.get_player_name(farm_playoff_mvp)}\n"
+            if farm_mvp and farm_mvp != 0:
+                result += f"**Farm MVP:** {AwardsManager.get_player_name(farm_mvp)}\n"
+            if farm_top_scorer and farm_top_scorer != 0:
+                result += f"**Farm Top Scorer:** {AwardsManager.get_player_name(farm_top_scorer)}\n"
+            if farm_goalie_of_year and farm_goalie_of_year != 0:
+                result += f"**Farm Goalie of the Year:** {AwardsManager.get_player_name(farm_goalie_of_year)}\n"
+            if farm_defenseman_of_year and farm_defenseman_of_year != 0:
+                result += f"**Farm Defenseman of the Year:** {AwardsManager.get_player_name(farm_defenseman_of_year)}\n"
+            if farm_rookie_of_year and farm_rookie_of_year != 0:
+                result += f"**Farm Rookie of the Year:** {AwardsManager.get_player_name(farm_rookie_of_year)}\n"
+            if farm_best_defensive_forward and farm_best_defensive_forward != 0:
+                result += f"**Farm Best Defensive Forward:** {AwardsManager.get_player_name(farm_best_defensive_forward)}\n"
+            if farm_most_sportsmanlike and farm_most_sportsmanlike != 0:
+                result += f"**Farm Most Sportsmanlike Player:** {AwardsManager.get_player_name(farm_most_sportsmanlike)}\n"
+            if farm_coach_of_year and farm_coach_of_year != 0:
+                result += f"**Farm Coach of the Year:** {AwardsManager.get_player_name(farm_coach_of_year)}\n"
+            if farm_top_goal_scorer and farm_top_goal_scorer != 0:
+                result += f"**Farm Top Goal Scorer:** {AwardsManager.get_player_name(farm_top_goal_scorer)}\n"
+            if farm_lowest_gaa and farm_lowest_gaa != 0:
+                result += f"**Farm Lowest GAA:** {AwardsManager.get_player_name(farm_lowest_gaa)}\n"
+            if farm_lowest_pim and farm_lowest_pim != 0:
+                result += f"**Farm Lowest PIM:** {AwardsManager.get_player_name(farm_lowest_pim)}\n"
+            
+            return result
 
 
 class PlayerStatsManager:
@@ -1517,19 +1600,43 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
 
-@bot.command(name='awards', help="Usage: $awards [season_id] [award_name]. Examples:\n$awards (current season)\n$awards 2023 (specific season)")
-async def awards(ctx, season_id: int = None, award_name: str = None):
+@bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)")
+async def awards(ctx, arg1: str = None, arg2: str = None):
     """Display award winners for a specific season and award."""
     try:
-        # Get the current season ID if not provided
-        if season_id is None:
-            season_id = TeamDataManager.get_current_season_id()
+        # Parse arguments
+        if arg1 is None:
+            # $awards - show current season
+            season_id = None
+            award_name = None
+        elif arg2 is None:
+            # $awards 2015 - show all awards for season 2015
+            if arg1.isdigit():
+                season_id = arg1
+                award_name = None
+            else:
+                # $awards MVP - show MVP for current season
+                award_name = arg1
+                season_id = None
+        else:
+            # $awards MVP 2015 or $awards MVP all
+            if arg1.isdigit():
+                # $awards 2015 MVP (old format, still supported)
+                season_id = arg1
+                award_name = arg2
+            else:
+                # $awards MVP 2015 (new format)
+                award_name = arg1
+                season_id = arg2
         
         # Get award winners
         award_winners = AwardsManager.get_award_winners(award_name, season_id)
         
         if not award_winners:
-            await ctx.send(f"No awards found for season {season_id}.")
+            if season_id == "all":
+                await ctx.send(f"No historical data found for {award_name}.")
+            else:
+                await ctx.send(f"No awards found for season {season_id}.")
             return
         
         # Format and display
@@ -1539,7 +1646,14 @@ async def awards(ctx, season_id: int = None, award_name: str = None):
         if len(awards_formatted) > 1900:
             await ctx.send(f"```{awards_formatted}```")
         else:
-            embed = discord.Embed(title=f"Awards for Season {season_id}", color=0xeee657)
+            if season_id == "all":
+                title = f"Historical Winners: {award_name}"
+            elif award_name:
+                title = f"{award_name} Winner - Season {season_id}"
+            else:
+                title = f"Awards for Season {season_id}"
+            
+            embed = discord.Embed(title=title, color=0xeee657)
             embed.add_field(name="Awards", value=awards_formatted, inline=False)
             await ctx.send(embed=embed)
             
