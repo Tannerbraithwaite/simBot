@@ -831,6 +831,36 @@ class TradeManager:
         cleaned = cleaned.rstrip('\n')
         
         return cleaned
+    
+    @staticmethod
+    def format_single_trade(trade: Tuple, trade_number: int) -> str:
+        """Formats a single trade into a readable string."""
+        t_id, date_created, team1_id, team2_id, team1_list, team2_list, \
+        team1_approved, team2_approved, commish_approved, future_considerations = trade
+        
+        # Get team names
+        team1_name = TradeManager.get_team_name(team1_id)
+        team2_name = TradeManager.get_team_name(team2_id)
+        
+        # Format date
+        date_str = str(date_created).split(' ')[0] if date_created else "Unknown"
+        
+        # Clean HTML tags and format trade details
+        team1_clean = TradeManager.clean_html_tags(team1_list)
+        team2_clean = TradeManager.clean_html_tags(team2_list)
+        
+        result = f"**Trade #{t_id}** - {date_str}\n"
+        result += f"**{team1_name}** receives:\n"
+        result += f"```{team1_clean}```\n"
+        result += f"**{team2_name}** receives:\n"
+        result += f"```{team2_clean}```\n"
+        
+        if future_considerations and future_considerations != "NULL":
+            future_clean = TradeManager.clean_html_tags(future_considerations)
+            result += f"**Future Considerations:** {future_clean}\n"
+        
+        result += "-" * 30
+        return result
 
 
 class PlayerStatsManager:
@@ -1268,17 +1298,13 @@ async def trades_by_player(ctx, player_name: str, limit: int = 10):
             await ctx.send(f"No trade history found for {player_name.title()}.")
             return
         
-        # Check if we need to split into multiple messages due to Discord limits
-        trade_history_formatted = TradeManager.format_trade_history(trades, player_name)
+        # Send header message
+        await ctx.send(f"**Trade History for {player_name.title()}** ({len(trades)} trades found)")
         
-        # If the formatted history is too long, send it as a code block instead of embed
-        if len(trade_history_formatted) > 1900:  # Leave some buffer for Discord limits
-            await ctx.send(f"```{trade_history_formatted}```")
-        else:
-            # Use embed for shorter trade histories
-            embed = discord.Embed(title=f"Trade History for {player_name.title()}", color=0xeee657)
-            embed.add_field(name="Trade History", value=trade_history_formatted, inline=False)
-            await ctx.send(embed=embed)
+        # Send each trade as a separate message
+        for i, trade in enumerate(trades, 1):
+            trade_message = TradeManager.format_single_trade(trade, i)
+            await ctx.send(trade_message)
             
     except Exception as e:
         await ctx.send(f"Error retrieving trade history: {str(e)}")
