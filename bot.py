@@ -415,42 +415,55 @@ class ScoresManager:
 
     @staticmethod
     def format_games_list(games: List[Tuple], team1: str = None, team2: str = None) -> str:
-        """Format list of games for display with optional head-to-head record."""
-        formatted = "Date              Away                Home\n"
-        formatted += "-" * 50 + "\n"  # Add separator line
+        """Format a list of games into a readable string with proper alignment."""
+        if not games:
+            return "No games found."
         
-        # Calculate head-to-head record if both teams are specified
-        h2h_record = None
-        if team1 and team2 and team2 != "all":
-            h2h_record = ScoresManager.calculate_head_to_head_record(games, team1, team2)
+        # Header with proper alignment
+        result = "Date              Away                Home\n"
+        result += "--------------------------------------------------\n"
         
         for game in games:
             # Unpack game data - now includes goalie information
             if len(game) >= 7:  # New format with goalie fields
                 date_val, v_team, v_score, h_team, h_score, v_goalie, h_goalie = game
             else:  # Fallback to old format
-                date_val, v_team, v_score, h_team, h_score = game
+                date_val, v_score, h_score = game
                 v_goalie, h_goalie = None, None
             
-            date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, 'strftime') else str(date_val)[:10]
+            # Format date
+            date_str = str(date_val)
             
-            # Format away team with score, ensuring proper alignment
-            away_team_acronym = TEAM_ACRONYMS.get(v_team, v_team)
-            away_display = f"{away_team_acronym} {int(v_score)}"
+            # Get team acronyms for display
+            v_acronym = TEAM_ACRONYMS.get(v_team, v_team)
+            h_acronym = TEAM_ACRONYMS.get(h_team, h_team)
             
-            # Format home team with score, ensuring proper alignment  
-            home_team_acronym = TEAM_ACRONYMS.get(h_team, h_team)
-            home_display = f"{home_team_acronym} {int(h_score)}"
+            # Check if this was an overtime game
+            is_ot = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else False
             
-            # Use fixed-width formatting to align columns
-            formatted += f"{date_str}  {away_display:<20} {home_display}\n"
+            # Format scores with OT indicator if applicable
+            v_score_display = f"{v_acronym} {v_score}"
+            h_score_display = f"{h_acronym} {h_score}"
+            
+            if is_ot:
+                # Add (OT) to the losing team's score
+                if int(v_score) > int(h_score):
+                    h_score_display += "(OT)"
+                else:
+                    v_score_display += "(OT)"
+            
+            # Format with proper alignment
+            result += f"{date_str:<16} {v_score_display:<20} {h_score_display}\n"
         
-        # Add head-to-head record at the bottom if available
-        if h2h_record:
-            formatted += "-" * 50 + "\n"  # Add separator line
-            formatted += f"Record: {h2h_record}\n"
+        # Add separator line
+        result += "--------------------------------------------------\n"
         
-        return formatted
+        # Add head-to-head record if both teams are specified
+        if team1 and team2 and team2 != 'all':
+            record = ScoresManager.calculate_head_to_head_record(games, team1, team2)
+            result += f"Record: {record}\n"
+        
+        return result
     
     @staticmethod
     def format_game_scores(games: List[Tuple]) -> str:
