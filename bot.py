@@ -325,8 +325,7 @@ class ScoresManager:
             if force_all_seasons:
                 # Show all-time head-to-head games
                 query = (
-                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore, 
-                              VisitorOT, HomeOT, VisitorSO, HomeSO """
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
                     "FROM todaysgame "
                     "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
                     "ORDER BY Date DESC LIMIT %s"""
@@ -335,8 +334,7 @@ class ScoresManager:
             else:
                 # Show only current season head-to-head games
                 query = (
-                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore, 
-                              VisitorOT, HomeOT, VisitorSO, HomeSO """
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
                     "FROM todaysgame "
                     "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
                     "AND Season_ID = %s "
@@ -348,8 +346,7 @@ class ScoresManager:
             if force_all_seasons:
                 # Show all-time games
                 query = (
-                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore, 
-                              VisitorOT, HomeOT, VisitorSO, HomeSO """
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
                     "FROM todaysgame "
                     "WHERE VisitorTeam = %s OR HomeTeam = %s "
                     "ORDER BY Date DESC LIMIT %s"""
@@ -358,8 +355,7 @@ class ScoresManager:
             else:
                 # Show only current season games
                 query = (
-                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore, 
-                              VisitorOT, HomeOT, VisitorSO, HomeSO """
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
                     "FROM todaysgame "
                     "WHERE (VisitorTeam = %s OR HomeTeam = %s) AND Season_ID = %s "
                     "ORDER BY Date DESC LIMIT %s"""
@@ -380,13 +376,7 @@ class ScoresManager:
             h2h_record = ScoresManager.calculate_head_to_head_record(games, team1, team2)
         
         for game in games:
-            # Unpack game data - now includes OT and SO fields
-            if len(game) >= 9:  # New format with OT/SO fields
-                date_val, v_team, v_score, h_team, h_score, v_ot, h_ot, v_so, h_so = game
-            else:  # Fallback to old format
-                date_val, v_team, v_score, h_team, h_score = game
-                v_ot, h_ot, v_so, h_so = False, False, False, False
-            
+            date_val, v_team, v_score, h_team, h_score = game
             date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, 'strftime') else str(date_val)[:10]
             
             # Format away team with score, ensuring proper alignment
@@ -419,26 +409,18 @@ class ScoresManager:
 
     @staticmethod
     def calculate_head_to_head_record(games: List[Tuple], team1: str, team2: str) -> str:
-        """Calculate head-to-head record between two teams from the given games using NHL W-L-OTL format."""
+        """Calculate head-to-head record between two teams from the given games using simplified W-L format."""
         team1_wins = 0
         team1_losses = 0
-        team1_otl = 0
         team2_wins = 0
         team2_losses = 0
-        team2_otl = 0
         
         # Clean team names for comparison (handle case and underscores)
         team1_clean = TeamDataManager.clean_team_name(team1.lower())
         team2_clean = TeamDataManager.clean_team_name(team2.lower())
         
         for game in games:
-            # Unpack game data - now includes OT and SO fields
-            if len(game) >= 9:  # New format with OT/SO fields
-                date_val, v_team, v_score, h_team, h_score, v_ot, h_ot, v_so, h_so = game
-            else:  # Fallback to old format
-                date_val, v_team, v_score, h_team, h_score = game
-                v_ot, h_ot, v_so, h_so = False, False, False, False
-            
+            date_val, v_team, v_score, h_team, h_score = game
             v_score_int, h_score_int = int(v_score), int(h_score)
             
             # Clean the team names from the database for comparison
@@ -453,37 +435,37 @@ class ScoresManager:
                     team2_losses += 1
                 elif v_score_int < h_score_int:
                     team2_wins += 1
-                    # Check if this was an OTL for team1
-                    if v_ot or v_so:
-                        team1_otl += 1
-                    else:
-                        team1_losses += 1
+                    team1_losses += 1
                 else:
-                    # Tie - this shouldn't happen in modern NHL, but handle it as OTL
-                    team1_otl += 1
-                    team2_otl += 1
+                    # Tie - count as half win/half loss for both teams
+                    team1_wins += 0.5
+                    team1_losses += 0.5
+                    team2_wins += 0.5
+                    team2_losses += 0.5
             elif v_team_clean == team2_clean and h_team_clean == team1_clean:
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
                     team2_wins += 1
-                    # Check if this was an OTL for team1
-                    if h_ot or h_so:
-                        team1_otl += 1
-                    else:
-                        team1_losses += 1
+                    team1_losses += 1
                 elif v_score_int < h_score_int:
                     team1_wins += 1
                     team2_losses += 1
                 else:
-                    # Tie - this shouldn't happen in modern NHL, but handle it as OTL
-                    team1_otl += 1
-                    team2_otl += 1
+                    # Tie - count as half win/half loss for both teams
+                    team1_wins += 0.5
+                    team1_losses += 0.5
+                    team2_wins += 0.5
+                    team2_losses += 0.5
         
-        # Format the record using NHL W-L-OTL format
+        # Format the record using simplified W-L format
         team1_acronym = TEAM_ACRONYMS.get(team1, team1)
         team2_acronym = TEAM_ACRONYMS.get(team2, team2)
         
-        return f"{team1_acronym}: {team1_wins}-{team1_losses}-{team1_otl} vs {team2_acronym}: {team2_wins}-{team2_losses}-{team2_otl}"
+        # Handle ties by showing decimal places
+        if team1_wins % 1 != 0 or team2_wins % 1 != 0:
+            return f"{team1_acronym}: {team1_wins:.1f}-{team1_losses:.1f} vs {team2_acronym}: {team2_wins:.1f}-{team2_losses:.1f}"
+        else:
+            return f"{team1_acronym}: {int(team1_wins)}-{int(team1_losses)} vs {team2_acronym}: {int(team2_wins)}-{int(team2_losses)}"
 
 
 class PlayerStatsManager:
