@@ -302,30 +302,65 @@ class ScoresManager:
 
     # NEW METHOD
     @staticmethod
-    def get_recent_games_for_team(team1: str, team2: str = "all", limit: int = 10) -> List[Tuple]:
+    def get_recent_games_for_team(team1: str, team2: str = "all", limit: int = 10, force_all_seasons: bool = False) -> List[Tuple]:
         """Return most recent games for team1 (optionally against team2) limited to `limit` games.
+        
+        Args:
+            team1: Primary team to get games for
+            team2: Secondary team filter ('all' for any opponent)
+            limit: Maximum number of games to return
+            force_all_seasons: If True, ignore season filter (for when user specifies exact count)
+        
         Returns list ordered newest -> oldest with fields (Date, VisitorTeam, VisitorScore, HomeTeam, HomeScore).
         """
         # Clean names (handle underscores)
         team1 = TeamDataManager.clean_team_name(team1)
         team2 = TeamDataManager.clean_team_name(team2)
 
+        # Get current season ID for filtering
+        current_season_id = TeamDataManager.get_current_season_id()
+        
         if team2 != "all":
-            query = (
-                """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
-                "FROM todaysgame "
-                "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
-                "ORDER BY Date DESC LIMIT %s"""
-            )
-            params = (team1, team2, team2, team1, limit)
+            # Head-to-head games
+            if force_all_seasons:
+                # Show all-time head-to-head games
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                    "FROM todaysgame "
+                    "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
+                    "ORDER BY Date DESC LIMIT %s"""
+                )
+                params = (team1, team2, team2, team1, limit)
+            else:
+                # Show only current season head-to-head games
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                    "FROM todaysgame "
+                    "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s)) "
+                    "AND Season_ID = %s "
+                    "ORDER BY Date DESC LIMIT %s"""
+                )
+                params = (team1, team2, team2, team1, current_season_id, limit)
         else:
-            query = (
-                """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
-                "FROM todaysgame "
-                "WHERE VisitorTeam = %s OR HomeTeam = %s "
-                "ORDER BY Date DESC LIMIT %s"""
-            )
-            params = (team1, team1, limit)
+            # All opponents
+            if force_all_seasons:
+                # Show all-time games
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                    "FROM todaysgame "
+                    "WHERE VisitorTeam = %s OR HomeTeam = %s "
+                    "ORDER BY Date DESC LIMIT %s"""
+                )
+                params = (team1, team1, limit)
+            else:
+                # Show only current season games
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore """
+                    "FROM todaysgame "
+                    "WHERE (VisitorTeam = %s OR HomeTeam = %s) AND Season_ID = %s "
+                    "ORDER BY Date DESC LIMIT %s"""
+                )
+                params = (team1, team1, current_season_id, limit)
 
         return DatabaseManager.execute_query(query, params)
 
@@ -758,12 +793,25 @@ async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 1
         # Clamp
         num_games = min(max(int(num_games), 1), 82)
 
-        games = ScoresManager.get_recent_games_for_team(team1, team2, num_games)
+        # Determine if we should force all seasons or stick to current season
+        # If user specified a specific number of games (not default 10), show all-time
+        # If user specified default 10, show only current season
+        force_all_seasons = (num_games != 10) or (ctx.message.content.split()[-1].isdigit())
+        
+        games = ScoresManager.get_recent_games_for_team(team1, team2, num_games, force_all_seasons)
         if not games:
-            await ctx.send("No games found matching those criteria.")
+            season_context = "this season" if not force_all_seasons else "all time"
+            await ctx.send(f"No games found for {team1.title()} {season_context} matching those criteria.")
             return
+        
         games_formatted = ScoresManager.format_games_list(games)
-        embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '')
+        
+        # Create appropriate title based on context
+        if force_all_seasons:
+            embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (all time)"
+        else:
+            embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (this season)"
+            
         embed = discord.Embed(title=embed_title, color=0xeee657)
         embed.add_field(name="Games", value=f"```{games_formatted}```", inline=False)
         await ctx.send(embed=embed)
