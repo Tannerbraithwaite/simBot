@@ -756,7 +756,7 @@ class TradeManager:
     """Handles trade-related data operations."""
     
     @staticmethod
-    def get_trades_by_player(player_name: str, limit: int = 10) -> List[Tuple]:
+    def get_trades_by_player(player_name: str, limit: int = 5) -> List[Tuple]:
         """Get all trades involving a specific player, limited to specified number."""
         # Clean player name for search (handle underscores and case)
         cleaned_name = player_name.replace('_', ' ').lower()
@@ -775,7 +775,7 @@ class TradeManager:
         return DatabaseManager.execute_query(query, (search_pattern, search_pattern, limit))
     
     @staticmethod
-    def get_trades_by_team(team1: str, team2: str = 'all', limit: int = 10) -> List[Tuple]:
+    def get_trades_by_team(team1: str, team2: str = 'all', limit: int = 5) -> List[Tuple]:
         """Get trades involving a specific team, optionally filtered by another team, limited to specified number."""
         # Clean team names for search
         team1_clean = TeamDataManager.clean_team_name(team1.lower())
@@ -1340,7 +1340,7 @@ async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 1
 
 
 @bot.command(name='trades_by_player', help="Usage: $trades_by_player <player_name> [limit]. Examples:\n$trades_by_player Mikael_backlund\n$trades_by_player Mikael_backlund 1")
-async def trades_by_player(ctx, player_name: str, limit: int = 10):
+async def trades_by_player(ctx, player_name: str, limit: int = 5):
     """Display trade history for a specific player."""
     try:
         # Clamp limit to reasonable range
@@ -1364,7 +1364,7 @@ async def trades_by_player(ctx, player_name: str, limit: int = 10):
 
 
 @bot.command(name='trades_by_team', help="Usage: $trades_by_team <team1> [team2|limit] [limit]. Examples:\n$trades_by_team Oilers\n$trades_by_team Oilers Canucks\n$trades_by_team Oilers 5\n$trades_by_team Oilers Canucks 5")
-async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 10):
+async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
     """Display trade history for a specific team, optionally filtered by another team."""
     try:
         # Handle case where second argument is numeric (limit)
