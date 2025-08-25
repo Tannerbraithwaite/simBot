@@ -589,6 +589,12 @@ class ScoresManager:
         # Clean team name for comparison
         team_clean = TeamDataManager.clean_team_name(team.lower())
         
+        print(f"DEBUG: Looking for team: '{team}' -> cleaned to '{team_clean}'")
+        print(f"DEBUG: First few games to see actual database team names:")
+        for i, game in enumerate(games[:3]):
+            if len(game) >= 5:
+                print(f"DEBUG: Game {i+1}: '{game[1]}' vs '{game[3]}'")
+        
         for game in games:
             # Unpack game data - now includes goalie information
             if len(game) >= 7:  # New format with goalie fields
@@ -603,33 +609,50 @@ class ScoresManager:
             v_team_clean = v_team.lower()
             h_team_clean = h_team.lower()
             
+            print(f"DEBUG: Game: '{v_team}' vs '{h_team}' (scores: {v_score_int}-{h_score_int})")
+            print(f"DEBUG: Comparing '{v_team_clean}' == '{team_clean.lower()}' and '{h_team_clean}' == '{team_clean.lower()}'")
+            
             # Check if this team is in the game
-            if v_team_clean == team_clean:
+            if v_team_clean == team_clean.lower():
+                print(f"DEBUG: MATCH! team ({team_clean}) is away")
                 # Team is away
                 if v_score_int > h_score_int:
                     wins += 1
+                    print(f"DEBUG: team wins")
                 elif v_score_int < h_score_int:
                     # Check if this was an OTL
                     if ScoresManager.is_overtime_game(v_goalie, h_goalie):
                         otl += 1
+                        print(f"DEBUG: team loses in OT")
                     else:
                         losses += 1
+                        print(f"DEBUG: team loses in regulation")
                 else:
                     # Tie - treat as OTL
                     otl += 1
-            elif h_team_clean == team_clean:
+                    print(f"DEBUG: tie, team gets OTL")
+            elif h_team_clean == team_clean.lower():
+                print(f"DEBUG: MATCH! team ({team_clean}) is home")
                 # Team is home
                 if h_score_int > v_score_int:
                     wins += 1
+                    print(f"DEBUG: team wins")
                 elif h_score_int < v_score_int:
                     # Check if this was an OTL
                     if ScoresManager.is_overtime_game(v_goalie, h_goalie):
                         otl += 1
+                        print(f"DEBUG: team loses in OT")
                     else:
                         losses += 1
+                        print(f"DEBUG: team loses in regulation")
                 else:
                     # Tie - treat as OTL
                     otl += 1
+                    print(f"DEBUG: tie, team gets OTL")
+            else:
+                print(f"DEBUG: NO MATCH for team ({team_clean.lower()})")
+        
+        print(f"DEBUG: Final record: team {team_clean}: {wins}-{losses}-{otl}")
         
         # Format the record using NHL W-L-OTL format
         team_acronym = TEAM_ACRONYMS.get(team, team)
