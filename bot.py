@@ -445,7 +445,7 @@ class ScoresManager:
             h_acronym = TEAM_ACRONYMS.get(h_team, h_team)
             
             # Check if this was an overtime game
-            is_ot = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else False
+            is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else (False, "")
             
             # Format scores with OT indicator if applicable - convert to integers
             v_score_int = int(float(v_score))
@@ -454,12 +454,12 @@ class ScoresManager:
             v_score_display = f"{v_acronym} {v_score_int}"
             h_score_display = f"{h_acronym} {h_score_int}"
             
-            if is_ot:
-                # Add (OT) to the losing team's score
+            if is_ot and overtime_type:
+                # Add (OT) or (SO) to the losing team's score
                 if v_score_int > h_score_int:
-                    h_score_display += "(OT)"
+                    h_score_display += f"({overtime_type})"
                 else:
-                    v_score_display += "(OT)"
+                    v_score_display += f"({overtime_type})"
             
             # Format with proper alignment
             result += f"{date_str:<16} {v_score_display:<20} {h_score_display}\n"
@@ -536,7 +536,7 @@ class ScoresManager:
                 elif v_score_int < h_score_int:
                     team2_wins += 1
                     # Check if this was an OTL for team1
-                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie)[0]: # Check if it was OT
                         team1_otl += 1
                         print(f"DEBUG: team2 wins, team1 gets OTL")
                     else:
@@ -553,7 +553,7 @@ class ScoresManager:
                 if v_score_int > h_score_int:
                     team2_wins += 1
                     # Check if this was an OTL for team1
-                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie)[0]: # Check if it was OT
                         team1_otl += 1
                         print(f"DEBUG: team2 wins, team1 gets OTL")
                     else:
@@ -621,7 +621,7 @@ class ScoresManager:
                     print(f"DEBUG: team wins")
                 elif v_score_int < h_score_int:
                     # Check if this was an OTL
-                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie)[0]: # Check if it was OT
                         otl += 1
                         print(f"DEBUG: team loses in OT")
                     else:
@@ -639,7 +639,7 @@ class ScoresManager:
                     print(f"DEBUG: team wins")
                 elif h_score_int < v_score_int:
                     # Check if this was an OTL
-                    if ScoresManager.is_overtime_game(v_goalie, h_goalie):
+                    if ScoresManager.is_overtime_game(v_goalie, h_goalie)[0]: # Check if it was OT
                         otl += 1
                         print(f"DEBUG: team loses in OT")
                     else:
@@ -707,20 +707,32 @@ class ScoresManager:
             return 0
     
     @staticmethod
-    def is_overtime_game(visitor_goalie: str, home_goalie: str) -> bool:
-        """Check if a game went to overtime based on goalie minutes played."""
+    def is_overtime_game(visitor_goalie: str, home_goalie: str) -> tuple[bool, str]:
+        """Check if a game went to overtime or shootout based on goalie minutes played.
+        Returns (is_overtime, overtime_type) where overtime_type is 'OT' or 'SO'."""
         if not visitor_goalie or not home_goalie:
             print(f"DEBUG: Missing goalie data - visitor: '{visitor_goalie}', home: '{home_goalie}'")
-            return False
+            return False, ""
         
         v_minutes = ScoresManager.parse_goalie_minutes(visitor_goalie)
         h_minutes = ScoresManager.parse_goalie_minutes(home_goalie)
         
         print(f"DEBUG: Goalie minutes - visitor: {v_minutes}, home: {h_minutes}")
         print(f"DEBUG: Overtime threshold: 60 minutes")
-        print(f"DEBUG: Is overtime game: {v_minutes > 60 or h_minutes > 60}")
         
-        return v_minutes > 60 or h_minutes > 60
+        # Check if either goalie played more than 60 minutes
+        max_minutes = max(v_minutes, h_minutes)
+        if max_minutes > 60:
+            # Determine if it's a shootout (exactly 65:00) or overtime (more than 65:00)
+            if abs(max_minutes - 65.0) < 0.01:  # Allow for small floating point differences
+                print(f"DEBUG: Is shootout game: True (exactly 65 minutes)")
+                return True, "SO"
+            else:
+                print(f"DEBUG: Is overtime game: True (more than 65 minutes)")
+                return True, "OT"
+        else:
+            print(f"DEBUG: Is overtime game: False")
+            return False, ""
 
 
 class PlayerStatsManager:
