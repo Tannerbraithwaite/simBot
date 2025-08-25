@@ -81,7 +81,10 @@ class TeamDataManager:
     @staticmethod
     def clean_team_name(team_name: str) -> str:
         """Clean team name by replacing underscores with spaces and handling common variations."""
-        # Handle underscores first
+        # First, replace any underscores with spaces for all inputs
+        cleaned = team_name.replace('_', ' ')
+        
+        # Handle specific underscore replacements (for backward compatibility)
         replacements = {
             'Red_Wings': 'Red Wings',
             'Blue_Jackets': 'Blue Jackets',
@@ -90,8 +93,9 @@ class TeamDataManager:
             'Golden_Knights': 'Golden Knights'
         }
         
-        # Apply underscore replacements
-        cleaned = replacements.get(team_name, team_name)
+        # Apply underscore replacements if exact match (for backward compatibility)
+        if team_name in replacements:
+            cleaned = replacements[team_name]
         
         # Handle common case variations and abbreviations
         team_variations = {
