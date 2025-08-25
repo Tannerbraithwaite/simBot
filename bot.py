@@ -497,10 +497,10 @@ class ScoresManager:
             h_team_clean = h_team.lower()
             
             print(f"DEBUG: Game: '{v_team}' vs '{h_team}' (scores: {v_score_int}-{h_score_int})")
-            print(f"DEBUG: Comparing '{v_team_clean}' == '{team1_clean}' and '{h_team_clean}' == '{team2_clean}'")
+            print(f"DEBUG: Comparing '{v_team_clean}' == '{team1_clean.lower()}' and '{h_team_clean}' == '{team2_clean.lower()}'")
             
             # Determine which team is which (case-insensitive comparison)
-            if v_team_clean == team1_clean and h_team_clean == team2_clean:
+            if v_team_clean == team1_clean.lower() and h_team_clean == team2_clean.lower():
                 print(f"DEBUG: MATCH! team1 ({team1_clean}) is away, team2 ({team2_clean}) is home")
                 # team1 is away, team2 is home
                 if v_score_int > h_score_int:
@@ -521,7 +521,7 @@ class ScoresManager:
                     team1_otl += 1
                     team2_otl += 1
                     print(f"DEBUG: tie, both get OTL")
-            elif v_team_clean == team2_clean and h_team_clean == team1_clean:
+            elif v_team_clean == team2_clean.lower() and h_team_clean == team1_clean.lower():
                 print(f"DEBUG: MATCH! team2 ({team2_clean}) is away, team1 ({team1_clean}) is home")
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
@@ -543,7 +543,7 @@ class ScoresManager:
                     team2_otl += 1
                     print(f"DEBUG: tie, both get OTL")
             else:
-                print(f"DEBUG: NO MATCH for team1 ({team1_clean}) or team2 ({team2_clean})")
+                print(f"DEBUG: NO MATCH for team1 ({team1_clean.lower()}) or team2 ({team2_clean.lower()})")
         
         print(f"DEBUG: Final record: team1 {team1_clean}: {team1_wins}-{team1_losses}-{team1_otl}, team2 {team2_clean}: {team2_wins}-{team2_losses}-{team2_otl}")
         
