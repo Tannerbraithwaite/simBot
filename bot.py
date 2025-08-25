@@ -1600,7 +1600,7 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
 
-@bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)")
+@bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)\n\nAvailable Awards:\n🏆 NHL: MVP, PlayoffMVP, TopScorer, GoalieOfTheYear, DefensemanOfTheYear, RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, TopGoalScorer, LowestGAA, LowestPIM, GeneralManager\n🏆 Farm: FarmMVP, FarmPlayoffMVP, FarmTopScorer, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM")
 async def awards(ctx, arg1: str = None, arg2: str = None):
     """Display award winners for a specific season and award."""
     try:
