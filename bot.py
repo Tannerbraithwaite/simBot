@@ -775,6 +775,52 @@ class TradeManager:
         return DatabaseManager.execute_query(query, (search_pattern, search_pattern, limit))
     
     @staticmethod
+    def get_trades_by_team(team1: str, team2: str = 'all', limit: int = 10) -> List[Tuple]:
+        """Get trades involving a specific team, optionally filtered by another team, limited to specified number."""
+        # Clean team names for search
+        team1_clean = TeamDataManager.clean_team_name(team1.lower())
+        team2_clean = TeamDataManager.clean_team_name(team2.lower()) if team2 != 'all' else 'all'
+        
+        # Get team ID for team1
+        team1_result = DatabaseManager.execute_query("SELECT Number FROM proteam WHERE LOWER(Name) = %s", (team1_clean.lower(),))
+        if not team1_result:
+            return []
+        
+        team1_id = team1_result[0][0]
+        
+        if team2 == 'all':
+            # Get all trades involving team1
+            query = """
+            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+                   Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
+            FROM transactions 
+            WHERE (Team1 = %s OR Team2 = %s)
+            AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
+            ORDER BY DateCreated DESC
+            LIMIT %s
+            """
+            return DatabaseManager.execute_query(query, (team1_id, team1_id, limit))
+        else:
+            # Get team2 ID
+            team2_result = DatabaseManager.execute_query("SELECT Number FROM proteam WHERE LOWER(Name) = %s", (team2_clean.lower(),))
+            if not team2_result:
+                return []
+            
+            team2_id = team2_result[0][0]
+            
+            # Get trades between team1 and team2
+            query = """
+            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+                   Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
+            FROM transactions 
+            WHERE ((Team1 = %s AND Team2 = %s) OR (Team1 = %s AND Team2 = %s))
+            AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
+            ORDER BY DateCreated DESC
+            LIMIT %s
+            """
+            return DatabaseManager.execute_query(query, (team1_id, team2_id, team2_id, team1_id, limit))
+    
+    @staticmethod
     def get_team_name(team_id: int) -> str:
         """Get team name from team ID."""
         result = DatabaseManager.execute_query("SELECT Name FROM proteam WHERE Number = %s", (team_id,))
@@ -1307,6 +1353,41 @@ async def trades_by_player(ctx, player_name: str, limit: int = 10):
         
         # Send header message
         await ctx.send(f"**Trade History for {player_name.title()}** ({len(trades)} trades found)")
+        
+        # Send each trade as a separate message
+        for i, trade in enumerate(trades, 1):
+            trade_message = TradeManager.format_single_trade(trade, i)
+            await ctx.send(trade_message)
+            
+    except Exception as e:
+        await ctx.send(f"Error retrieving trade history: {str(e)}")
+
+
+@bot.command(name='trades_by_team', help="Usage: $trades_by_team <team1> [team2|limit] [limit]. Examples:\n$trades_by_team Oilers\n$trades_by_team Oilers Canucks\n$trades_by_team Oilers 5\n$trades_by_team Oilers Canucks 5")
+async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 10):
+    """Display trade history for a specific team, optionally filtered by another team."""
+    try:
+        # Handle case where second argument is numeric (limit)
+        if isinstance(team2, str) and team2.isdigit():
+            limit = int(team2)
+            team2 = 'all'
+        
+        # Clamp limit to reasonable range
+        limit = min(max(int(limit), 1), 50)
+        
+        trades = TradeManager.get_trades_by_team(team1, team2, limit)
+        if not trades:
+            if team2 == 'all':
+                await ctx.send(f"No trade history found for {team1.title()}.")
+            else:
+                await ctx.send(f"No trade history found between {team1.title()} and {team2.title()}.")
+            return
+        
+        # Send header message
+        if team2 == 'all':
+            await ctx.send(f"**Trade History for {team1.title()}** ({len(trades)} trades found)")
+        else:
+            await ctx.send(f"**Trade History between {team1.title()} and {team2.title()}** ({len(trades)} trades found)")
         
         # Send each trade as a separate message
         for i, trade in enumerate(trades, 1):
