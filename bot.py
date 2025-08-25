@@ -1600,65 +1600,65 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
 
-@bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)\n\nAvailable Awards:\n🏆 NHL: MVP, PlayoffMVP, TopScorer, GoalieOfTheYear, DefensemanOfTheYear, RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, TopGoalScorer, LowestGAA, LowestPIM, GeneralManager\n🏆 Farm: FarmMVP, FarmPlayoffMVP, FarmTopScorer, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM")
-async def awards(ctx, arg1: str = None, arg2: str = None):
-    """Display award winners for a specific season and award."""
-    try:
-        # Parse arguments
-        if arg1 is None:
-            # $awards - show current season
-            season_id = None
-            award_name = None
-        elif arg2 is None:
-            # $awards 2015 - show all awards for season 2015
-            if arg1.isdigit():
-                season_id = arg1
-                award_name = None
-            else:
-                # $awards MVP - show MVP for current season
-                award_name = arg1
-                season_id = None
-        else:
-            # $awards MVP 2015 or $awards MVP all
-            if arg1.isdigit():
-                # $awards 2015 MVP (old format, still supported)
-                season_id = arg1
-                award_name = arg2
-            else:
-                # $awards MVP 2015 (new format)
-                award_name = arg1
-                season_id = arg2
-        
-        # Get award winners
-        award_winners = AwardsManager.get_award_winners(award_name, season_id)
-        
-        if not award_winners:
-            if season_id == "all":
-                await ctx.send(f"No historical data found for {award_name}.")
-            else:
-                await ctx.send(f"No awards found for season {season_id}.")
-            return
-        
-        # Format and display
-        awards_formatted = AwardsManager.format_awards(award_winners, award_name, season_id)
-        
-        # Check if we need to split into multiple messages due to Discord limits
-        if len(awards_formatted) > 1900:
-            await ctx.send(f"```{awards_formatted}```")
-        else:
-            if season_id == "all":
-                title = f"Historical Winners: {award_name}"
-            elif award_name:
-                title = f"{award_name} Winner - Season {season_id}"
-            else:
-                title = f"Awards for Season {season_id}"
-            
-            embed = discord.Embed(title=title, color=0xeee657)
-            embed.add_field(name="Awards", value=awards_formatted, inline=False)
-            await ctx.send(embed=embed)
-            
-    except Exception as e:
-        await ctx.send(f"Error retrieving awards: {str(e)}")
+# @bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)\n\nAvailable Awards:\n🏆 NHL: MVP, PlayoffMVP, TopScorer, GoalieOfTheYear, DefensemanOfTheYear, RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, TopGoalScorer, LowestGAA, LowestPIM, GeneralManager\n🏆 Farm: FarmMVP, FarmPlayoffMVP, FarmTopScorer, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM")
+# async def awards(ctx, arg1: str = None, arg2: str = None):
+#     """Display award winners for a specific season and award."""
+#     try:
+#         # Parse arguments
+#         if arg1 is None:
+#             # $awards - show current season
+#             season_id = None
+#             award_name = None
+#         elif arg2 is None:
+#             # $awards 2015 - show all awards for season 2015
+#             if arg1.isdigit():
+#                 season_id = arg1
+#                 award_name = None
+#             else:
+#                 # $awards MVP - show MVP for current season
+#                 award_name = arg1
+#                 season_id = None
+#         else:
+#             # $awards MVP 2015 or $awards MVP all
+#             if arg1.isdigit():
+#                 # $awards 2015 MVP (old format, still supported)
+#                 season_id = arg1
+#                 award_name = arg2
+#             else:
+#                 # $awards MVP 2015 (new format)
+#                 award_name = arg1
+#                 season_id = arg2
+#         
+#         # Get award winners
+#         award_winners = AwardsManager.get_award_winners(award_name, season_id)
+#         
+#         if not award_winners:
+#             if season_id == "all":
+#                 await ctx.send(f"No historical data found for {award_name}.")
+#             else:
+#                 await ctx.send(f"No awards found for season {season_id}.")
+#             return
+#         
+#         # Format and display
+#         awards_formatted = AwardsManager.format_awards(award_winners, award_name, season_id)
+#         
+#         # Check if we need to split into multiple messages due to Discord limits
+#         if len(awards_formatted) > 1900:
+#             await ctx.send(f"```{awards_formatted}```")
+#         else:
+#             if season_id == "all":
+#                 title = f"Historical Winners: {award_name}"
+#             elif award_name:
+#                 title = f"{award_name} Winner - Season {season_id}"
+#             else:
+#                 title = f"Awards for Season {season_id}"
+#             
+#             embed = discord.Embed(title=title, color=0xeee657)
+#             embed.add_field(name="Awards", value=awards_formatted, inline=False)
+#             await ctx.send(embed=embed)
+#             
+#     except Exception as e:
+#         await ctx.send(f"Error retrieving awards: {str(e)}")
 
 
 # Run the bot
