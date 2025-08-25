@@ -414,12 +414,20 @@ class ScoresManager:
         team2_wins = 0
         ties = 0
         
+        # Clean team names for comparison (handle case and underscores)
+        team1_clean = TeamDataManager.clean_team_name(team1.lower())
+        team2_clean = TeamDataManager.clean_team_name(team2.lower())
+        
         for game in games:
             v_team, v_score, h_team, h_score = game[1], game[2], game[3], game[4]
             v_score_int, h_score_int = int(v_score), int(h_score)
             
-            # Determine which team is which
-            if v_team == team1 and h_team == team2:
+            # Clean the team names from the database for comparison
+            v_team_clean = v_team.lower()
+            h_team_clean = h_team.lower()
+            
+            # Determine which team is which (case-insensitive comparison)
+            if v_team_clean == team1_clean and h_team_clean == team2_clean:
                 # team1 is away, team2 is home
                 if v_score_int > h_score_int:
                     team1_wins += 1
@@ -427,7 +435,7 @@ class ScoresManager:
                     team2_wins += 1
                 else:
                     ties += 1
-            elif v_team == team2 and h_team == team1:
+            elif v_team_clean == team2_clean and h_team_clean == team1_clean:
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
                     team2_wins += 1
@@ -436,7 +444,7 @@ class ScoresManager:
                 else:
                     ties += 1
         
-        # Format the record
+        # Format the record using the original team names (not cleaned)
         team1_acronym = TEAM_ACRONYMS.get(team1, team1)
         team2_acronym = TEAM_ACRONYMS.get(team2, team2)
         
