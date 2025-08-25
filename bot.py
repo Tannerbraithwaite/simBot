@@ -428,11 +428,17 @@ class ScoresManager:
             if len(game) >= 7:  # New format with goalie fields
                 date_val, v_team, v_score, h_team, h_score, v_goalie, h_goalie = game
             else:  # Fallback to old format
-                date_val, v_score, h_score = game
+                date_val, v_team, v_score, h_team, h_score = game
                 v_goalie, h_goalie = None, None
             
-            # Format date
-            date_str = str(date_val)
+            # Format date - extract just the date part if it's a timestamp
+            if hasattr(date_val, 'strftime'):
+                date_str = date_val.strftime("%Y-%m-%d")
+            else:
+                date_str = str(date_val)
+                # If it's a string timestamp, extract just the date part
+                if ' ' in date_str:
+                    date_str = date_str.split(' ')[0]
             
             # Get team acronyms for display
             v_acronym = TEAM_ACRONYMS.get(v_team, v_team)
@@ -441,13 +447,16 @@ class ScoresManager:
             # Check if this was an overtime game
             is_ot = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else False
             
-            # Format scores with OT indicator if applicable
-            v_score_display = f"{v_acronym} {v_score}"
-            h_score_display = f"{h_acronym} {h_score}"
+            # Format scores with OT indicator if applicable - convert to integers
+            v_score_int = int(float(v_score))
+            h_score_int = int(float(h_score))
+            
+            v_score_display = f"{v_acronym} {v_score_int}"
+            h_score_display = f"{h_acronym} {h_score_int}"
             
             if is_ot:
                 # Add (OT) to the losing team's score
-                if int(v_score) > int(h_score):
+                if v_score_int > h_score_int:
                     h_score_display += "(OT)"
                 else:
                     v_score_display += "(OT)"
