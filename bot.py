@@ -660,36 +660,40 @@ class ScoresManager:
 
     @staticmethod
     def parse_goalie_minutes(goalie_data: str) -> int:
-        """Parse goalie data to extract minutes played. Returns 0 if parsing fails."""
+        """Parse goalie data string to extract minutes played."""
+        if not goalie_data or goalie_data == "None":
+            return 0
+        
         try:
-            if not goalie_data or goalie_data == "None":
-                return 0
-            
-            # Look for pattern like "60:00 minutes" or "65:30 minutes"
+            # Look for pattern like "65:30 minutes" or "60:00 minutes"
             if "minutes" in goalie_data:
                 # Extract the time part before "minutes"
                 time_part = goalie_data.split("minutes")[0].strip()
                 if ":" in time_part:
-                    # Split by colon to get minutes and seconds
-                    parts = time_part.split(":")
-                    if len(parts) == 2:
-                        minutes = int(parts[0])
-                        seconds = int(parts[1])
-                        total_minutes = minutes + (seconds / 60.0)
-                        return total_minutes
-            
+                    minutes, seconds = time_part.split(":")
+                    total_minutes = float(minutes) + float(seconds) / 60.0
+                    print(f"DEBUG: Parsed goalie data '{goalie_data}' -> {total_minutes} minutes")
+                    return total_minutes
             return 0
-        except:
+        except Exception as e:
+            print(f"DEBUG: Error parsing goalie data '{goalie_data}': {e}")
             return 0
-
+    
     @staticmethod
     def is_overtime_game(visitor_goalie: str, home_goalie: str) -> bool:
-        """Determine if a game went to overtime by checking if either goalie played more than 60 minutes."""
-        visitor_minutes = ScoresManager.parse_goalie_minutes(visitor_goalie)
-        home_minutes = ScoresManager.parse_goalie_minutes(home_goalie)
+        """Check if a game went to overtime based on goalie minutes played."""
+        if not visitor_goalie or not home_goalie:
+            print(f"DEBUG: Missing goalie data - visitor: '{visitor_goalie}', home: '{home_goalie}'")
+            return False
         
-        # If either goalie played more than 60 minutes, it's an overtime game
-        return visitor_minutes > 60 or home_minutes > 60
+        v_minutes = ScoresManager.parse_goalie_minutes(visitor_goalie)
+        h_minutes = ScoresManager.parse_goalie_minutes(home_goalie)
+        
+        print(f"DEBUG: Goalie minutes - visitor: {v_minutes}, home: {h_minutes}")
+        print(f"DEBUG: Overtime threshold: 60 minutes")
+        print(f"DEBUG: Is overtime game: {v_minutes > 60 or h_minutes > 60}")
+        
+        return v_minutes > 60 or h_minutes > 60
 
 
 class PlayerStatsManager:
