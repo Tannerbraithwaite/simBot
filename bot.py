@@ -858,9 +858,9 @@ class TradeManager:
         
         result = f"**Trade #{t_id}** - {date_str}\n"
         result += f"**{team1_name}** receives:\n"
-        result += f"```{team1_clean}```\n"
-        result += f"**{team2_name}** receives:\n"
         result += f"```{team2_clean}```\n"
+        result += f"**{team2_name}** receives:\n"
+        result += f"```{team1_clean}```\n"
         
         if future_considerations and future_considerations != "NULL":
             future_clean = TradeManager.clean_html_tags(future_considerations)
