@@ -838,9 +838,16 @@ class TradeManager:
         t_id, date_created, team1_id, team2_id, team1_list, team2_list, \
         team1_approved, team2_approved, commish_approved, future_considerations = trade
         
+        # Debug output to see what we're getting from database
+        print(f"DEBUG: Trade #{t_id} - Team1 ID: {team1_id}, Team2 ID: {team2_id}")
+        print(f"DEBUG: Team1List: '{team1_list}'")
+        print(f"DEBUG: Team2List: '{team2_list}'")
+        
         # Get team names
         team1_name = TradeManager.get_team_name(team1_id)
         team2_name = TradeManager.get_team_name(team2_id)
+        
+        print(f"DEBUG: Team1 Name: '{team1_name}', Team2 Name: '{team2_name}'")
         
         # Format date
         date_str = str(date_created).split(' ')[0] if date_created else "Unknown"
