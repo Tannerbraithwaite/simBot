@@ -333,12 +333,21 @@ class ScoresManager:
     def format_games_list(games: List[Tuple]) -> str:
         """Format list of games for display."""
         formatted = "Date              Away                Home\n"
+        formatted += "-" * 50 + "\n"  # Add separator line
         for game in games:
             date_val, v_team, v_score, h_team, h_score = game
             date_str = date_val.strftime("%Y-%m-%d") if hasattr(date_val, 'strftime') else str(date_val)[:10]
-            away_line = f"{TEAM_ACRONYMS.get(v_team, v_team)} {int(v_score)}"
-            home_line = f"{TEAM_ACRONYMS.get(h_team, h_team)} {int(h_score)}"
-            formatted += (f"{date_str}  {away_line.ljust(12)}  {home_line}\n")
+            
+            # Format away team with score, ensuring proper alignment
+            away_team_acronym = TEAM_ACRONYMS.get(v_team, v_team)
+            away_display = f"{away_team_acronym} {int(v_score)}"
+            
+            # Format home team with score, ensuring proper alignment  
+            home_team_acronym = TEAM_ACRONYMS.get(h_team, h_team)
+            home_display = f"{home_team_acronym} {int(h_score)}"
+            
+            # Use fixed-width formatting to align columns
+            formatted += f"{date_str}  {away_display:<20} {home_display}\n"
         return formatted
     
     @staticmethod
