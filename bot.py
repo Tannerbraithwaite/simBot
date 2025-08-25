@@ -800,19 +800,37 @@ class TradeManager:
             # Format date
             date_str = str(date_created).split(' ')[0] if date_created else "Unknown"
             
-            # Format trade details
+            # Clean HTML tags and format trade details
+            team1_clean = TradeManager.clean_html_tags(team1_list)
+            team2_clean = TradeManager.clean_html_tags(team2_list)
+            
             result += f"**Trade #{t_id}** - {date_str}\n"
             result += f"**{team1_name}** receives:\n"
-            result += f"```{team1_list}```\n"
+            result += f"```{team1_clean}```\n"
             result += f"**{team2_name}** receives:\n"
-            result += f"```{team2_list}```\n"
+            result += f"```{team2_clean}```\n"
             
             if future_considerations and future_considerations != "NULL":
-                result += f"**Future Considerations:** {future_considerations}\n"
+                future_clean = TradeManager.clean_html_tags(future_considerations)
+                result += f"**Future Considerations:** {future_clean}\n"
             
             result += "-" * 30 + "\n\n"
         
         return result
+    
+    @staticmethod
+    def clean_html_tags(text: str) -> str:
+        """Clean HTML tags from text, converting <br> to line breaks except at end of line."""
+        if not text:
+            return ""
+        
+        # Convert <br> tags to line breaks, but remove trailing <br> at end of line
+        cleaned = text.replace('<br>', '\n')
+        
+        # Remove trailing <br> tags that would create empty lines
+        cleaned = cleaned.rstrip('\n')
+        
+        return cleaned
 
 
 class PlayerStatsManager:
