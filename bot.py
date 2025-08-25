@@ -476,6 +476,8 @@ class ScoresManager:
         team1_clean = TeamDataManager.clean_team_name(team1.lower())
         team2_clean = TeamDataManager.clean_team_name(team2.lower())
         
+        print(f"DEBUG: Looking for teams: '{team1}' -> cleaned to '{team1_clean}' and '{team2}' -> cleaned to '{team2_clean}'")
+        
         for game in games:
             # Unpack game data - now includes goalie information
             if len(game) >= 7:  # New format with goalie fields
@@ -490,39 +492,56 @@ class ScoresManager:
             v_team_clean = v_team.lower()
             h_team_clean = h_team.lower()
             
+            print(f"DEBUG: Game: '{v_team}' vs '{h_team}' (scores: {v_score_int}-{h_score_int})")
+            print(f"DEBUG: Comparing '{v_team_clean}' == '{team1_clean}' and '{h_team_clean}' == '{team2_clean}'")
+            
             # Determine which team is which (case-insensitive comparison)
             if v_team_clean == team1_clean and h_team_clean == team2_clean:
+                print(f"DEBUG: MATCH! team1 ({team1_clean}) is away, team2 ({team2_clean}) is home")
                 # team1 is away, team2 is home
                 if v_score_int > h_score_int:
                     team1_wins += 1
                     team2_losses += 1
+                    print(f"DEBUG: team1 wins, team2 loses")
                 elif v_score_int < h_score_int:
                     team2_wins += 1
                     # Check if this was an OTL for team1
                     if ScoresManager.is_overtime_game(v_goalie, h_goalie):
                         team1_otl += 1
+                        print(f"DEBUG: team2 wins, team1 gets OTL")
                     else:
                         team1_losses += 1
+                        print(f"DEBUG: team2 wins, team1 gets regular loss")
                 else:
                     # Tie - this shouldn't happen in modern NHL, but handle it as OTL
                     team1_otl += 1
                     team2_otl += 1
+                    print(f"DEBUG: tie, both get OTL")
             elif v_team_clean == team2_clean and h_team_clean == team1_clean:
+                print(f"DEBUG: MATCH! team2 ({team2_clean}) is away, team1 ({team1_clean}) is home")
                 # team2 is away, team1 is home
                 if v_score_int > h_score_int:
                     team2_wins += 1
                     # Check if this was an OTL for team1
                     if ScoresManager.is_overtime_game(v_goalie, h_goalie):
                         team1_otl += 1
+                        print(f"DEBUG: team2 wins, team1 gets OTL")
                     else:
                         team1_losses += 1
+                        print(f"DEBUG: team2 wins, team1 gets regular loss")
                 elif v_score_int < h_score_int:
                     team1_wins += 1
                     team2_losses += 1
+                    print(f"DEBUG: team1 wins, team2 loses")
                 else:
                     # Tie - this shouldn't happen in modern NHL, but handle it as OTL
                     team1_otl += 1
                     team2_otl += 1
+                    print(f"DEBUG: tie, both get OTL")
+            else:
+                print(f"DEBUG: NO MATCH for team1 ({team1_clean}) or team2 ({team2_clean})")
+        
+        print(f"DEBUG: Final record: team1 {team1_clean}: {team1_wins}-{team1_losses}-{team1_otl}, team2 {team2_clean}: {team2_wins}-{team2_losses}-{team2_otl}")
         
         # Format the record using NHL W-L-OTL format
         team1_acronym = TEAM_ACRONYMS.get(team1, team1)
