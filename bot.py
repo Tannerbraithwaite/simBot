@@ -772,7 +772,6 @@ class TradeManager:
                Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
         FROM transactions 
         WHERE (LOWER(Team1List) LIKE %s OR LOWER(Team2List) LIKE %s)
-        AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
         ORDER BY DateCreated DESC
         LIMIT %s
         """
@@ -801,7 +800,6 @@ class TradeManager:
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
             FROM transactions 
             WHERE (Team1 = %s OR Team2 = %s)
-            AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
             ORDER BY DateCreated DESC
             LIMIT %s
             """
@@ -820,7 +818,6 @@ class TradeManager:
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
             FROM transactions 
             WHERE ((Team1 = %s AND Team2 = %s) OR (Team1 = %s AND Team2 = %s))
-            AND Team1Approved = 'True' AND Team2Approved = 'True' AND CommishApproved = 'True'
             ORDER BY DateCreated DESC
             LIMIT %s
             """
@@ -908,7 +905,21 @@ class TradeManager:
         team1_clean = TradeManager.clean_html_tags(team1_list)
         team2_clean = TradeManager.clean_html_tags(team2_list)
         
-        result = f"**Trade #{t_id}** - {date_str}\n"
+        # Determine approval status
+        approval_status = ""
+        if team1_approved == 'True' and team2_approved == 'True' and commish_approved == 'True':
+            approval_status = "✅ **APPROVED**"
+        elif team1_approved == 'True' and team2_approved == 'True':
+            approval_status = "⏳ **PENDING COMMISSIONER APPROVAL**"
+        else:
+            pending_teams = []
+            if team1_approved != 'True':
+                pending_teams.append(team1_name)
+            if team2_approved != 'True':
+                pending_teams.append(team2_name)
+            approval_status = f"⏳ **PENDING APPROVAL** ({', '.join(pending_teams)})"
+        
+        result = f"**Trade #{t_id}** - {date_str} - {approval_status}\n"
         result += f"**{team1_name}** receives:\n"
         result += f"```{team2_clean}```\n"
         result += f"**{team2_name}** receives:\n"
