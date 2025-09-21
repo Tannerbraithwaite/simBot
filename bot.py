@@ -1322,7 +1322,7 @@ async def scoredate(ctx, selecteddate: str = str(date.today())):
         title_score = f"the scores for {game_date}"
         scores_formatted = f"```{game_scores}```"
         
-        embed = discord.Embed(title=title_score, url='http://cchlsim.com/pro_scores.php', color=0xeee657)
+        embed = discord.Embed(title=title_score, url='http://mrfhl.com/pro_scores.php', color=0xeee657)
         embed.add_field(name="Scores", value=scores_formatted)
         await ctx.send(embed=embed)
         
