@@ -321,12 +321,28 @@ class ScoresManager:
     
     @staticmethod
     def get_games_for_date(selected_date: str) -> Tuple[List[Tuple], str]:
-        """Get games for a specific date."""
+        """Get games for a specific date. If no games found for selected_date, 
+        return games from the most recent date available in the database."""
         games = DatabaseManager.execute_query(
             """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
                FROM todaysgame WHERE SUBSTR(Date, 1, 10) = (%s)""",
             (selected_date,)
         )
+        
+        # If no games found for selected_date, get the most recent date available
+        if not games:
+            max_date_result = DatabaseManager.execute_query("SELECT MAX(Date) FROM todaysgame")
+            max_date = max_date_result[0][0] if max_date_result else None
+            
+            if max_date:
+                games = DatabaseManager.execute_query(
+                    """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
+                       FROM todaysgame WHERE Date = (%s)""",
+                    (max_date,)
+                )
+                return games, str(max_date.date())
+            else:
+                return [], selected_date
         
         return games, selected_date
 
