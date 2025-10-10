@@ -325,19 +325,19 @@ class ScoresManager:
         return games from the most recent date available in the database."""
         games = DatabaseManager.execute_query(
             """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
-               FROM todaysgame WHERE SUBSTR(Date, 1, 10) = (%s)""",
+               FROM todaysgame WHERE Type = 'Pro' AND SUBSTR(Date, 1, 10) = (%s)""",
             (selected_date,)
         )
         
         # If no games found for selected_date, get the most recent date available
         if not games:
-            max_date_result = DatabaseManager.execute_query("SELECT MAX(Date) FROM todaysgame")
+            max_date_result = DatabaseManager.execute_query("SELECT MAX(Date) FROM todaysgame WHERE Type = 'Pro'")
             max_date = max_date_result[0][0] if max_date_result else None
             
             if max_date:
                 games = DatabaseManager.execute_query(
                     """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore 
-                       FROM todaysgame WHERE Date = (%s)""",
+                       FROM todaysgame WHERE Type = 'Pro' AND Date = (%s)""",
                     (max_date,)
                 )
                 return games, str(max_date.date())
@@ -345,8 +345,34 @@ class ScoresManager:
                 return [], selected_date
         
         return games, selected_date
+    
+    @staticmethod
+    def get_farm_games_for_date(selected_date: str) -> Tuple[List[Tuple], str]:
+        """Get farm games for a specific date. If no games found for selected_date,
+        return games from the most recent farm date available in the database."""
+        games = DatabaseManager.execute_query(
+            """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore
+               FROM todaysgame WHERE Type = 'Farm' AND SUBSTR(Date, 1, 10) = (%s)""",
+            (selected_date,)
+        )
 
-    # NEW METHOD
+        # If no games found for selected_date, get the most recent farm date available
+        if not games:
+            max_date_result = DatabaseManager.execute_query("SELECT MAX(Date) FROM todaysgame WHERE Type = 'Farm'")
+            max_date = max_date_result[0][0] if max_date_result else None
+
+            if max_date:
+                games = DatabaseManager.execute_query(
+                    """SELECT VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore
+                       FROM todaysgame WHERE Type = 'Farm' AND Date = (%s)""",
+                    (max_date,)
+                )
+                return games, str(max_date.date())
+            else:
+                return [], selected_date
+
+        return games, selected_date
+    
     @staticmethod
     def get_recent_games_for_team(team1: str, team2: str = "all", limit: int = 10, force_all_seasons: bool = False) -> List[Tuple]:
         """Return most recent games for team1 (optionally against team2) limited to `limit` games.
@@ -1677,6 +1703,33 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
 #             
 #     except Exception as e:
 #         await ctx.send(f"Error retrieving awards: {str(e)}")
+
+
+# New command: Farm scores
+@bot.command(name='scores_farm', help="type $scores_farm followed by the date(ie. $scores_farm 2020/03/29) to get the farm scores for a specific date")
+async def scores_farm(ctx, selecteddate: str = None):
+    """Display farm scores for a specific date."""
+    # Default to today's date if none provided
+    if selecteddate is None:
+        selecteddate = str(date.today())
+
+    try:
+        games, game_date = ScoresManager.get_farm_games_for_date(selecteddate)
+
+        if not games:
+            await ctx.send("No farm games found for the specified date.")
+            return
+
+        game_scores = ScoresManager.format_game_scores(games)
+        title_score = f"the farm scores for {game_date}"
+        scores_formatted = f"```{game_scores}```"
+
+        embed = discord.Embed(title=title_score, url='http://mrfhl.com/farm_scores.php', color=0xeee657)
+        embed.add_field(name="Farm Scores", value=scores_formatted)
+        await ctx.send(embed=embed)
+
+    except Exception as e:
+        await ctx.send(f"Error retrieving farm scores: {str(e)}")
 
 
 # Run the bot
