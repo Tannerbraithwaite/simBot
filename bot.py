@@ -1306,8 +1306,12 @@ async def on_ready():
 
 # Bot commands
 @bot.command(name='scores', help="type $scores followed by the date(ie. $scores 2020/03/29) to get the scores for a specific date")
-async def scoredate(ctx, selecteddate: str = str(date.today())):
+async def scoredate(ctx, selecteddate: str = None):
     """Display scores for a specific date."""
+    # If no date provided, use today's date at runtime
+    if selecteddate is None:
+        selecteddate = str(date.today())
+
     try:
         games, game_date = ScoresManager.get_games_for_date(selecteddate)
         
