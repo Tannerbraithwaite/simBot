@@ -1377,11 +1377,12 @@ async def standings(ctx, div_con: Optional[str] = None):
             embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
             
         else:
-            div_con = div_con.capitalize()
+            # Handle case-insensitive input
+            div_con_lower = div_con.lower()
             
-            if div_con in ["Western_wildcard", "Eastern_wildcard"]:
+            if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
                 # Wildcard standings
-                if div_con == "Western_wildcard":
+                if div_con_lower == "western_wildcard":
                     div1_query = "SELECT Number FROM proteam WHERE Division = 'Central'"
                     div2_query = "SELECT Number FROM proteam WHERE Division = 'Pacific'"
                 else:  # Eastern_wildcard
@@ -1400,35 +1401,45 @@ async def standings(ctx, div_con: Optional[str] = None):
                 sorted_div1 = StandingsManager.sort_standings(div1_stats)
                 sorted_div2 = StandingsManager.sort_standings(div2_stats)
                 
-                # Format wildcard standings
-                standings = '\n    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+                # Format wildcard standings - split into multiple fields to avoid Discord's 1024 char limit
+                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
                 
                 # Division leaders
                 div1_leaders = sorted_div1[:3]
                 div2_leaders = sorted_div2[:3]
                 
+                # Format division leaders
+                div1_standings = header
                 for i, team in enumerate(div1_leaders, 1):
-                    standings += FormattingUtils.format_standings_row(i, team)
+                    div1_standings += FormattingUtils.format_standings_row(i, team)
                 
-                standings += '-----------------------\n'
-                
+                div2_standings = header
                 for i, team in enumerate(div2_leaders, 1):
-                    standings += FormattingUtils.format_standings_row(i, team)
-                
-                standings += '-----------------------\n'
+                    div2_standings += FormattingUtils.format_standings_row(i, team)
                 
                 # Wildcard teams
                 wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
                 wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
                 
+                wildcard_standings = header
                 for i, team in enumerate(wildcard_teams, 1):
                     if i == 3:
-                        standings += '-----------------------\n'
-                    standings += FormattingUtils.format_standings_row(i, team)
+                        wildcard_standings += '-----------------------\n'
+                    wildcard_standings += FormattingUtils.format_standings_row(i, team)
                 
-                formatted_standings = FormattingUtils.replace_team_names(f"```{standings}```")
+                # Create embed with multiple fields
                 embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                embed.add_field(name=f"{div_con} Standings", value=formatted_standings, inline=False)
+                
+                # Add division leaders
+                if div_con_lower == "western_wildcard":
+                    embed.add_field(name="Central Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="Pacific Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+                else:  # Eastern_wildcard
+                    embed.add_field(name="Northeast Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="Atlantic Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+                
+                # Add wildcard teams
+                embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_team_names(f"```{wildcard_standings}```"), inline=False)
                 
             else:
                 # Conference/Division standings
