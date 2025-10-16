@@ -1468,12 +1468,43 @@ async def standings(ctx, div_con: Optional[str] = None):
                 team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
                 sorted_teams = StandingsManager.sort_standings(team_stats)
                 
-                is_conference = div_con in ["Western", "Eastern"]
-                standings = StandingsManager.format_division_standings(sorted_teams, is_conference)
+                is_conference = div_con_lower in ["western", "eastern"]
                 
-                formatted_standings = FormattingUtils.replace_team_names(f"```{standings}```")
-                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                embed.add_field(name=f"{div_con} Standings", value=formatted_standings, inline=False)
+                # Split standings into multiple fields to avoid Discord's 1024 char limit
+                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+                
+                if is_conference:
+                    # For conferences, split at 10 teams
+                    standings1 = header
+                    standings2 = header
+                    
+                    for i, team in enumerate(sorted_teams, 1):
+                        row = FormattingUtils.format_standings_row(i, team, False)
+                        if i <= 10:
+                            standings1 += row
+                        else:
+                            standings2 += row
+                    
+                    embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                    embed.add_field(name=f"{div_con} Standings (Top 10)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
+                    if len(sorted_teams) > 10:
+                        embed.add_field(name=f"{div_con} Standings (11+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
+                else:
+                    # For divisions, split at 4 teams
+                    standings1 = header
+                    standings2 = header
+                    
+                    for i, team in enumerate(sorted_teams, 1):
+                        row = FormattingUtils.format_standings_row(i, team, True)
+                        if i <= 4:
+                            standings1 += row
+                        else:
+                            standings2 += row
+                    
+                    embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                    embed.add_field(name=f"{div_con} Standings (Top 4)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
+                    if len(sorted_teams) > 4:
+                        embed.add_field(name=f"{div_con} Standings (5+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
         
         await ctx.send(embed=embed)
         
