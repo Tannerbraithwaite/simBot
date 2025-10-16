@@ -1383,11 +1383,11 @@ async def standings(ctx, div_con: Optional[str] = None):
             if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
                 # Wildcard standings
                 if div_con_lower == "western_wildcard":
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Central'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Pacific'"
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Stefan'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Bonsignore'"
                 else:  # Eastern_wildcard
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Northeast'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Atlantic'"
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Brendl'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Daigle'"
                 
                 div1_teams = DatabaseManager.execute_query(div1_query)
                 div2_teams = DatabaseManager.execute_query(div2_query)
@@ -1432,11 +1432,11 @@ async def standings(ctx, div_con: Optional[str] = None):
                 
                 # Add division leaders
                 if div_con_lower == "western_wildcard":
-                    embed.add_field(name="Central Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="Pacific Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+                    embed.add_field(name="Stefan Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="Bonsignore Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
                 else:  # Eastern_wildcard
-                    embed.add_field(name="Northeast Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="Atlantic Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+                    embed.add_field(name="Brendl Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="Daigle Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
                 
                 # Add wildcard teams
                 embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_team_names(f"```{wildcard_standings}```"), inline=False)
@@ -1446,16 +1446,16 @@ async def standings(ctx, div_con: Optional[str] = None):
                 division_queries = {
                     "western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
                     "eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
-                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
-                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
-                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "metro": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
-                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
-                    "central": "SELECT Number FROM proteam WHERE Division = 'Central'",
-                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Central'"
+                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Bonsignore'",
+                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Bonsignore'",
+                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
+                    "metro": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
+                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
+                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
+                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Daigle'",
+                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Daigle'",
+                    "central": "SELECT Number FROM proteam WHERE Division = 'Stefan'",
+                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Stefan'"
                 }
                 
                 if div_con_lower not in division_queries:
