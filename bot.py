@@ -1383,11 +1383,11 @@ async def standings(ctx, div_con: Optional[str] = None):
             if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
                 # Wildcard standings
                 if div_con_lower == "western_wildcard":
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Stefan'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Bonsignore'"
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'"
                 else:  # Eastern_wildcard
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Brendl'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Daigle'"
+                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Brendl Division'"
+                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Daigle Division'"
                 
                 div1_teams = DatabaseManager.execute_query(div1_query)
                 div2_teams = DatabaseManager.execute_query(div2_query)
@@ -1446,23 +1446,24 @@ async def standings(ctx, div_con: Optional[str] = None):
                 division_queries = {
                     "western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
                     "eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
-                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Bonsignore'",
-                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Bonsignore'",
-                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
-                    "metro": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
-                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
-                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Brendl'",
-                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Daigle'",
-                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Daigle'",
-                    "central": "SELECT Number FROM proteam WHERE Division = 'Stefan'",
-                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Stefan'"
+                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
+                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
+                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                    "metro": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
+                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
+                    "central": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'",
+                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
                 }
                 
                 if div_con_lower not in division_queries:
                     await ctx.send("We could not find that division, please check spelling(Atlantic/Daigle, Central/Stefan, Northeast/Metro/Brendl, Pacific/Bonsignore, Western, Eastern, Western_wildcard, Eastern_wildcard)")
                     return
                 
-                team_numbers = DatabaseManager.execute_query(division_queries[div_con_lower])
+                query = division_queries[div_con_lower]
+                team_numbers = DatabaseManager.execute_query(query)
                 team_numbers_tuple = tuple(team[0] for team in team_numbers)
                 
                 team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
