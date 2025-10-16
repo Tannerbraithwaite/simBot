@@ -1442,24 +1442,27 @@ async def standings(ctx, div_con: Optional[str] = None):
                 embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_team_names(f"```{wildcard_standings}```"), inline=False)
                 
             else:
-                # Conference/Division standings
+                # Conference/Division standings - case insensitive mapping
                 division_queries = {
-                    "Western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
-                    "Eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
-                    "Pacific": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
-                    "Northeast": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "North East": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "Metro": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "Metropolitan": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
-                    "Atlantic": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
-                    "Central": "SELECT Number FROM proteam WHERE Division = 'Central'"
+                    "western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
+                    "eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
+                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
+                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Pacific'",
+                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "metro": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Northeast'",
+                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
+                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Atlantic'",
+                    "central": "SELECT Number FROM proteam WHERE Division = 'Central'",
+                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Central'"
                 }
                 
-                if div_con not in division_queries:
-                    await ctx.send("We could not find that division, please check spelling(Atlantic, Central, Northeast/Metro, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)")
+                if div_con_lower not in division_queries:
+                    await ctx.send("We could not find that division, please check spelling(Atlantic/Daigle, Central/Stefan, Northeast/Metro/Brendl, Pacific/Bonsignore, Western, Eastern, Western_wildcard, Eastern_wildcard)")
                     return
                 
-                team_numbers = DatabaseManager.execute_query(division_queries[div_con])
+                team_numbers = DatabaseManager.execute_query(division_queries[div_con_lower])
                 team_numbers_tuple = tuple(team[0] for team in team_numbers)
                 
                 team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
