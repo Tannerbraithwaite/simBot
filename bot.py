@@ -1491,21 +1491,21 @@ async def standings(ctx, div_con: Optional[str] = None):
                     if len(sorted_teams) > 10:
                         embed.add_field(name=f"{div_con} Standings (11+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
                 else:
-                    # For divisions, split at 4 teams
+                    # For divisions, split at 3 teams
                     standings1 = header
                     standings2 = header
                     
                     for i, team in enumerate(sorted_teams, 1):
                         row = FormattingUtils.format_standings_row(i, team, True)
-                        if i <= 4:
+                        if i <= 3:
                             standings1 += row
                         else:
                             standings2 += row
                     
                     embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                    embed.add_field(name=f"{div_con} Standings (Top 4)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
-                    if len(sorted_teams) > 4:
-                        embed.add_field(name=f"{div_con} Standings (5+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
+                    embed.add_field(name=f"{div_con} Standings (Top 3)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
+                    if len(sorted_teams) > 3:
+                        embed.add_field(name=f"{div_con} Standings (4+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
         
         await ctx.send(embed=embed)
         
