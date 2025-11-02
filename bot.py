@@ -24,7 +24,7 @@ TEAM_ACRONYMS = {
     'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CAL', 'Capitals': 'WSH', 'Stars': 'DAL', 
     'Canucks': 'VAN', 'Sabres': 'BUF', 'Lightning': 'TBL', 'Blue Jackets': 'CBJ', 
     'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MON', 'Bruins': 'BOS', 'Flyers': 'PHI', 
-    'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA', 'Mammoth': 'GARY',
+    'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA', 'Mammoth': 'UTA',
 }
 
 # Bot setup
