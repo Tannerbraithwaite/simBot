@@ -880,11 +880,11 @@ class TradeManager:
         cleaned_name = player_name.replace('_', ' ').lower()
         
         query = """
-        SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+        SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List,
                Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
-        FROM transactions 
+        FROM transactions
         WHERE (LOWER(Team1List) LIKE %s OR LOWER(Team2List) LIKE %s)
-        AND Team1Approved = TRUE AND Team2Approved = TRUE
+        AND (Team1Approved = TRUE OR Team1Approved = 'True') AND (Team2Approved = TRUE OR Team2Approved = 'True')
         ORDER BY DateCreated DESC
         LIMIT %s
         """
@@ -909,11 +909,11 @@ class TradeManager:
         if team2 == 'all':
             # Get all trades involving team1
             query = """
-            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List,
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
-            FROM transactions 
+            FROM transactions
             WHERE (Team1 = %s OR Team2 = %s)
-            AND Team1Approved = TRUE AND Team2Approved = TRUE
+            AND (Team1Approved = TRUE OR Team1Approved = 'True') AND (Team2Approved = TRUE OR Team2Approved = 'True')
             ORDER BY DateCreated DESC
             LIMIT %s
             """
@@ -928,11 +928,11 @@ class TradeManager:
             
             # Get trades between team1 and team2
             query = """
-            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List, 
+            SELECT T_ID, DateCreated, Team1, Team2, Team1List, Team2List,
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
-            FROM transactions 
+            FROM transactions
             WHERE ((Team1 = %s AND Team2 = %s) OR (Team1 = %s AND Team2 = %s))
-            AND Team1Approved = TRUE AND Team2Approved = TRUE
+            AND (Team1Approved = TRUE OR Team1Approved = 'True') AND (Team2Approved = TRUE OR Team2Approved = 'True')
             ORDER BY DateCreated DESC
             LIMIT %s
             """
