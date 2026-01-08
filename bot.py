@@ -27,6 +27,42 @@ TEAM_ACRONYMS = {
     'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA', 'Mammoth': 'UTA',
 }
 
+# AHL Team acronyms mapping
+AHL_TEAM_CITY_ACRONYMS = {
+    'Marlies': 'TOR',          # Toronto
+    'Bears': 'HER',            # Hershey
+    'Phantoms': 'LVL',         # Lehigh Valley (Allentown)
+    'Barracuda': 'SJS',        # San Jose
+    'Wranglers': 'CGY',        # Calgary
+    'Eagles': 'COL',           # Loveland
+    'Stars': 'TEX',            # Cedar Park
+    'Rocket': 'LAV',           # Laval
+    'Griffins': 'GRP',         # Grand Rapids
+    'Condors': 'BAK',          # Bakersfield
+    'Islanders': 'BRI',        # Bridgeport
+    'Firebirds': 'CVF',        # Coachella Valley
+    'Senators': 'BEL',         # Belleville
+    'Canucks': 'ABB',          # Abbotsford
+    'Silver Knights': 'HEN',   # Henderson
+    'Gulls': 'SDG',            # San Diego
+    'Moose': 'MAN',            # Manitoba (Winnipeg)
+    'Wolf Pack': 'HAR',        # Hartford
+    'Americans': 'ROC',        # Rochester
+    'Wild': 'IOW',             # Iowa (Des Moines)
+    'Comets': 'UTI',           # Utica
+    'Admirals': 'MIL',         # Milwaukee
+    'Bruins': 'PRO',           # Providence
+    'Wolves': 'CHI',           # Chicago
+    'Roadrunners': 'TUC',      # Tucson
+    'Checkers': 'CHA',         # Charlotte
+    'Thunderbirds': 'SPR',     # Springfield
+    'Monsters': 'CLE',         # Cleveland
+    'Crunch': 'SYR',           # Syracuse
+    'Penguins': 'WBS',         # Wilkes-Barre / Scranton
+    'IceHogs': 'RFD',          # Rockford
+    'Reign': 'ONT',            # Ontario (CA)
+}
+
 # Bot setup
 client = discord.Client()
 bot = commands.Bot(command_prefix='$')
@@ -76,6 +112,18 @@ class TeamDataManager:
     def get_current_season_id() -> int:
         """Get the current season ID."""
         result = DatabaseManager.execute_query("select MAX(Season_ID) from proteamstandings")
+        return result[0][0] if result else 0
+    
+    @staticmethod
+    def get_ahl_team_id_mapping() -> Dict[int, str]:
+        """Get mapping of AHL team IDs to team names."""
+        teams_data = DatabaseManager.execute_query("SELECT Number, Name FROM farmteam")
+        return {team[0]: team[1] for team in teams_data}
+    
+    @staticmethod
+    def get_current_ahl_season_id() -> int:
+        """Get the current AHL season ID."""
+        result = DatabaseManager.execute_query("select MAX(Season_ID) from farmteamstandings")
         return result[0][0] if result else 0
     
     @staticmethod
@@ -228,6 +276,13 @@ class FormattingUtils:
         return text
     
     @staticmethod
+    def replace_ahl_team_names(text: str) -> str:
+        """Replace full AHL team names with acronyms."""
+        for full_name, acronym in AHL_TEAM_CITY_ACRONYMS.items():
+            text = text.replace(full_name, acronym)
+        return text
+    
+    @staticmethod
     def format_standings_row(rank: int, team: Dict, is_division: bool = False) -> str:
         """Format a single standings row."""
         wins = str(int(team['W'] + team['OTW'] + team['SOW']))
@@ -260,6 +315,40 @@ class StandingsManager:
             query = """SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA 
                       FROM proteamstandings WHERE Season_ID = (%s)"""
             params = (season_id,)
+        
+        results = DatabaseManager.execute_query(query, params)
+        
+        team_stats = []
+        for team in results:
+            team_stats.append({
+                'teamName': team_mapping[team[0]],
+                'points': team[1], 'GP': team[2], 'W': team[3], 'L': team[4],
+                'OTW': team[5], 'OTL': team[6], 'SOW': team[7], 'SOL': team[8],
+                'GF': team[9], 'GA': team[10]
+            })
+        
+        return team_stats
+    
+    @staticmethod
+    def get_ahl_team_stats(season_id: int, team_numbers: Optional[Tuple] = None) -> List[Dict]:
+        """Get AHL team statistics for standings."""
+        team_mapping = TeamDataManager.get_ahl_team_id_mapping()
+        
+        if team_numbers is None:
+            # No filter - get all teams
+            query = """SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA 
+                      FROM farmteamstandings WHERE Season_ID = (%s)"""
+            params = (season_id,)
+        elif len(team_numbers) > 0:
+            # Filter by specific team numbers
+            query = """SELECT Number, Point, GP, W, L, OTW, OTL, SOW, SOL, GF, GA 
+                      FROM farmteamstandings WHERE Season_ID = (%s) AND Number IN ({})""".format(
+                ','.join(['%s'] * len(team_numbers))
+            )
+            params = (season_id,) + team_numbers
+        else:
+            # Empty tuple - return empty list
+            return []
         
         results = DatabaseManager.execute_query(query, params)
         
@@ -1514,6 +1603,161 @@ async def standings(ctx, div_con: Optional[str] = None):
         
     except Exception as e:
         await ctx.send(f"Error retrieving standings: {str(e)}")
+
+
+@bot.command(name='standings_ahl', help="type $standings_ahl followed by the division of conference(ie. $standings_ahl Pacific, $standings_ahl Western) to get the AHL scores for a division or conference. You can view wildcard standings with $standings_ahl Western_wildcard. Default is league standings")
+async def standings_ahl(ctx, div_con: Optional[str] = None):
+    """Display AHL standings for league, conference, division, or wildcard."""
+    try:
+        season_id = TeamDataManager.get_current_ahl_season_id()
+        
+        if div_con is None:
+            # League standings
+            team_stats = StandingsManager.get_ahl_team_stats(season_id)
+            sorted_teams = StandingsManager.sort_standings(team_stats)
+            standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
+            
+            formatted_standings1 = FormattingUtils.replace_ahl_team_names(f"```{standings1}```")
+            formatted_standings2 = FormattingUtils.replace_ahl_team_names(f"```{standings2}```")
+            
+            embed = discord.Embed(title="AHL League Standings", color=0xeee657)
+            embed.add_field(name="AHL League Standings", value=formatted_standings1, inline=False)
+            embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
+            
+        else:
+            # Handle case-insensitive input
+            div_con_lower = div_con.lower()
+            
+            if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
+                # Wildcard standings
+                if div_con_lower == "western_wildcard":
+                    div1_query = "SELECT Number FROM farmteam WHERE Division = 'Central'"
+                    div2_query = "SELECT Number FROM farmteam WHERE Division = 'Pacific'"
+                else:  # Eastern_wildcard
+                    div1_query = "SELECT Number FROM farmteam WHERE Division = 'Atlantic'"
+                    div2_query = "SELECT Number FROM farmteam WHERE Division = 'North'"
+                
+                div1_teams = DatabaseManager.execute_query(div1_query)
+                div2_teams = DatabaseManager.execute_query(div2_query)
+                
+                div1_numbers = tuple(team[0] for team in div1_teams)
+                div2_numbers = tuple(team[0] for team in div2_teams)
+                
+                div1_stats = StandingsManager.get_ahl_team_stats(season_id, div1_numbers)
+                div2_stats = StandingsManager.get_ahl_team_stats(season_id, div2_numbers)
+                
+                sorted_div1 = StandingsManager.sort_standings(div1_stats)
+                sorted_div2 = StandingsManager.sort_standings(div2_stats)
+                
+                # Format wildcard standings - split into multiple fields to avoid Discord's 1024 char limit
+                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+                
+                # Division leaders
+                div1_leaders = sorted_div1[:3]
+                div2_leaders = sorted_div2[:3]
+                
+                # Format division leaders
+                div1_standings = header
+                for i, team in enumerate(div1_leaders, 1):
+                    div1_standings += FormattingUtils.format_standings_row(i, team)
+                
+                div2_standings = header
+                for i, team in enumerate(div2_leaders, 1):
+                    div2_standings += FormattingUtils.format_standings_row(i, team)
+                
+                # Wildcard teams
+                wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
+                wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
+                
+                wildcard_standings = header
+                for i, team in enumerate(wildcard_teams, 1):
+                    if i == 3:
+                        wildcard_standings += '-----------------------\n'
+                    wildcard_standings += FormattingUtils.format_standings_row(i, team)
+                
+                # Create embed with multiple fields
+                embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+                
+                # Add division leaders
+                if div_con_lower == "western_wildcard":
+                    embed.add_field(name="Central Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="Pacific Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
+                else:  # Eastern_wildcard
+                    embed.add_field(name="Atlantic Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
+                    embed.add_field(name="North Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
+                
+                # Add wildcard teams
+                embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_ahl_team_names(f"```{wildcard_standings}```"), inline=False)
+                
+            else:
+                # Conference/Division standings - case insensitive mapping
+                division_queries = {
+                    "western": "SELECT Number FROM farmteam WHERE Conference = 'Western Conference'",
+                    "eastern": "SELECT Number FROM farmteam WHERE Conference = 'Eastern Conference'",
+                    "pacific": "SELECT Number FROM farmteam WHERE Division = 'Pacific'",
+                    "atlantic": "SELECT Number FROM farmteam WHERE Division = 'Atlantic'",
+                    "central": "SELECT Number FROM farmteam WHERE Division = 'Central'",
+                    "north": "SELECT Number FROM farmteam WHERE Division = 'North'"
+                }
+                
+                if div_con_lower not in division_queries:
+                    await ctx.send("We could not find that division, please check spelling(Atlantic, Central, North, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)")
+                    return
+                
+                query = division_queries[div_con_lower]
+                team_numbers = DatabaseManager.execute_query(query)
+                team_numbers_tuple = tuple(team[0] for team in team_numbers)
+                
+                # Check if we got any teams from the query
+                if len(team_numbers_tuple) == 0:
+                    await ctx.send(f"No teams found for {div_con}. The Conference or Division may not exist in the AHL database.")
+                    return
+                
+                team_stats = StandingsManager.get_ahl_team_stats(season_id, team_numbers_tuple)
+                sorted_teams = StandingsManager.sort_standings(team_stats)
+                
+                is_conference = div_con_lower in ["western", "eastern"]
+                
+                # Split standings into multiple fields to avoid Discord's 1024 char limit
+                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+                
+                if is_conference:
+                    # For conferences, split at 10 teams
+                    standings1 = header
+                    standings2 = header
+                    
+                    for i, team in enumerate(sorted_teams, 1):
+                        row = FormattingUtils.format_standings_row(i, team, False)
+                        if i <= 10:
+                            standings1 += row
+                        else:
+                            standings2 += row
+                    
+                    embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+                    embed.add_field(name=f"AHL {div_con} Standings (Top 10)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
+                    if len(sorted_teams) > 10:
+                        embed.add_field(name=f"AHL {div_con} Standings (11+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
+                else:
+                    # For divisions, split at 3 teams
+                    standings1 = header
+                    standings2 = header
+                    
+                    for i, team in enumerate(sorted_teams, 1):
+                        row = FormattingUtils.format_standings_row(i, team, True)
+                        if i <= 3:
+                            standings1 += row
+                        else:
+                            standings2 += row
+                    
+                    embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+                    embed.add_field(name=f"AHL {div_con} Standings (Top 3)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
+                    if len(sorted_teams) > 3:
+                        embed.add_field(name=f"AHL {div_con} Standings (4+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
+        
+        await ctx.send(embed=embed)
+        
+    except Exception as e:
+        await ctx.send(f"Error retrieving AHL standings: {str(e)}")
 
 
 @bot.command(name='scoring_leaders', help="type $scoring_leaders followed by the team you want to filter by, then the position, then the stat for example $scoring_leaders Flames D Goals will give you the flames Defence Goal leaders, $scoring_leaders all F Hits will give you the forward hit leaders for the entire league. positions are C, RW, LW, D. available stats are Points, Goals, Assists, Hits, Pims, +/-, Shots, ShotsBlocked, and GWG. If a team has a space in it's name it requires an underscore ie. $scoring_leaders Golden_Knights")
