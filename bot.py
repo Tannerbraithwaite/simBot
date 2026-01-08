@@ -795,6 +795,7 @@ class TradeManager:
                Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
         FROM transactions 
         WHERE (LOWER(Team1List) LIKE %s OR LOWER(Team2List) LIKE %s)
+        AND Team1Approved = 1 AND Team2Approved = 1
         ORDER BY DateCreated DESC
         LIMIT %s
         """
@@ -823,6 +824,7 @@ class TradeManager:
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
             FROM transactions 
             WHERE (Team1 = %s OR Team2 = %s)
+            AND Team1Approved = 1 AND Team2Approved = 1
             ORDER BY DateCreated DESC
             LIMIT %s
             """
@@ -841,6 +843,7 @@ class TradeManager:
                    Team1Approved, Team2Approved, CommishApproved, FutureConsiderations
             FROM transactions 
             WHERE ((Team1 = %s AND Team2 = %s) OR (Team1 = %s AND Team2 = %s))
+            AND Team1Approved = 1 AND Team2Approved = 1
             ORDER BY DateCreated DESC
             LIMIT %s
             """
