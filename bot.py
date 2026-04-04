@@ -1,3 +1,4 @@
+import asyncio
 import mysql.connector as mysql
 from discord.ext import commands
 import discord
@@ -15,6 +16,9 @@ HOST = os.environ.get('HOST')
 DATABASE = os.environ.get('DATABASE')
 USER = os.environ.get('DBUSER')
 PASSWORD = os.environ.get('DBPASSWORD')
+
+# Seconds; sync MySQL calls block the event loop — timeout avoids hanging the gateway on unreachable DB
+DB_CONNECTION_TIMEOUT = 30
 
 # Team acronyms mapping
 TEAM_ACRONYMS = {
@@ -63,9 +67,11 @@ AHL_TEAM_CITY_ACRONYMS = {
     'Reign': 'ONT',            # Ontario (CA)
 }
 
-# Bot setup
-client = discord.Client()
-bot = commands.Bot(command_prefix='$')
+# Bot setup (message_content required for $ commands in servers — enable in Developer Portal)
+_intents = discord.Intents.default()
+_intents.message_content = True
+client = discord.Client(intents=_intents)
+bot = commands.Bot(intents=_intents, command_prefix='$')
 
 
 class DatabaseManager:
@@ -75,10 +81,11 @@ class DatabaseManager:
     def get_connection():
         """Create and return a database connection."""
         return mysql.connect(
-            host=HOST, 
-            user=USER, 
-            password=PASSWORD, 
-            database=DATABASE
+            host=HOST,
+            user=USER,
+            password=PASSWORD,
+            database=DATABASE,
+            connection_timeout=DB_CONNECTION_TIMEOUT,
         )
     
     @staticmethod
@@ -1430,450 +1437,444 @@ async def scoredate(ctx, selecteddate: str = None):
     if selecteddate is None:
         selecteddate = str(date.today())
 
-    try:
+    def _work():
         games, game_date = ScoresManager.get_games_for_date(selecteddate)
-        
         if not games:
-            await ctx.send("No games found for the specified date.")
-            return
-        
+            return 'text', "No games found for the specified date."
         game_scores = ScoresManager.format_game_scores(games)
         title_score = f"the scores for {game_date}"
         scores_formatted = f"```{game_scores}```"
-        
         embed = discord.Embed(title=title_score, url='http://mrfhl.com/pro_scores.php', color=0xeee657)
         embed.add_field(name="Scores", value=scores_formatted)
-        await ctx.send(embed=embed)
-        
+        return 'embed', embed
+
+    try:
+        kind, payload = await asyncio.to_thread(_work)
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving scores: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving scores: {str(e)}")
+
+
+def _standings_sync(div_con: Optional[str]) -> Tuple[str, Any]:
+    """Build standings embed off the asyncio event loop (sync MySQL). Returns ('embed', embed) or ('text', message)."""
+    season_id = TeamDataManager.get_current_season_id()
+
+    if div_con is None:
+        team_stats = StandingsManager.get_team_stats(season_id)
+        sorted_teams = StandingsManager.sort_standings(team_stats)
+        standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
+
+        formatted_standings1 = FormattingUtils.replace_team_names(f"```{standings1}```")
+        formatted_standings2 = FormattingUtils.replace_team_names(f"```{standings2}```")
+
+        embed = discord.Embed(title="League Standings", color=0xeee657)
+        embed.add_field(name="League Standings", value=formatted_standings1, inline=False)
+        embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
+    else:
+        div_con_lower = div_con.lower()
+
+        if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
+            if div_con_lower == "western_wildcard":
+                div1_query = "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
+                div2_query = "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'"
+            else:
+                div1_query = "SELECT Number FROM proteam WHERE Division = 'Brendl Division'"
+                div2_query = "SELECT Number FROM proteam WHERE Division = 'Daigle Division'"
+
+            div1_teams = DatabaseManager.execute_query(div1_query)
+            div2_teams = DatabaseManager.execute_query(div2_query)
+
+            div1_numbers = tuple(team[0] for team in div1_teams)
+            div2_numbers = tuple(team[0] for team in div2_teams)
+
+            div1_stats = StandingsManager.get_team_stats(season_id, div1_numbers)
+            div2_stats = StandingsManager.get_team_stats(season_id, div2_numbers)
+
+            sorted_div1 = StandingsManager.sort_standings(div1_stats)
+            sorted_div2 = StandingsManager.sort_standings(div2_stats)
+
+            header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+
+            div1_leaders = sorted_div1[:3]
+            div2_leaders = sorted_div2[:3]
+
+            div1_standings = header
+            for i, team in enumerate(div1_leaders, 1):
+                div1_standings += FormattingUtils.format_standings_row(i, team)
+
+            div2_standings = header
+            for i, team in enumerate(div2_leaders, 1):
+                div2_standings += FormattingUtils.format_standings_row(i, team)
+
+            wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
+            wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
+
+            wildcard_standings = header
+            for i, team in enumerate(wildcard_teams, 1):
+                if i == 3:
+                    wildcard_standings += '-----------------------\n'
+                wildcard_standings += FormattingUtils.format_standings_row(i, team)
+
+            embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+
+            if div_con_lower == "western_wildcard":
+                embed.add_field(name="Stefan Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                embed.add_field(name="Bonsignore Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+            else:
+                embed.add_field(name="Brendl Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
+                embed.add_field(name="Daigle Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
+
+            embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_team_names(f"```{wildcard_standings}```"), inline=False)
+
+        else:
+            division_queries = {
+                "western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
+                "eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
+                "pacific": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
+                "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
+                "northeast": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                "metro": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                "brendl": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
+                "atlantic": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
+                "daigle": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
+                "central": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'",
+                "stefan": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
+            }
+
+            if div_con_lower not in division_queries:
+                return 'text', "We could not find that division, please check spelling(Atlantic/Daigle, Central/Stefan, Northeast/Metro/Brendl, Pacific/Bonsignore, Western, Eastern, Western_wildcard, Eastern_wildcard)"
+
+            query = division_queries[div_con_lower]
+            team_numbers = DatabaseManager.execute_query(query)
+            team_numbers_tuple = tuple(team[0] for team in team_numbers)
+
+            team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
+            sorted_teams = StandingsManager.sort_standings(team_stats)
+
+            is_conference = div_con_lower in ["western", "eastern"]
+
+            header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+
+            if is_conference:
+                standings1 = header
+                standings2 = header
+
+                for i, team in enumerate(sorted_teams, 1):
+                    row = FormattingUtils.format_standings_row(i, team, False)
+                    if i <= 10:
+                        standings1 += row
+                    else:
+                        standings2 += row
+
+                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"{div_con} Standings (Top 10)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
+                if len(sorted_teams) > 10:
+                    embed.add_field(name=f"{div_con} Standings (11+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
+            else:
+                standings1 = header
+                standings2 = header
+
+                for i, team in enumerate(sorted_teams, 1):
+                    row = FormattingUtils.format_standings_row(i, team, True)
+                    if i <= 3:
+                        standings1 += row
+                    else:
+                        standings2 += row
+
+                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"{div_con} Standings (Top 3)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
+                if len(sorted_teams) > 3:
+                    embed.add_field(name=f"{div_con} Standings (4+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
+
+    return 'embed', embed
 
 
 @bot.command(name='standings', help="type $standings followed by the division of conference(ie. $standings Pacific, $standings Western) to get the scores for a division or conference. You can view wildcard standings with $standings Western_wildcard. Default is league standings")
 async def standings(ctx, div_con: Optional[str] = None):
     """Display standings for league, conference, division, or wildcard."""
     try:
-        season_id = TeamDataManager.get_current_season_id()
-        
-        if div_con is None:
-            # League standings
-            team_stats = StandingsManager.get_team_stats(season_id)
-            sorted_teams = StandingsManager.sort_standings(team_stats)
-            standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
-            
-            formatted_standings1 = FormattingUtils.replace_team_names(f"```{standings1}```")
-            formatted_standings2 = FormattingUtils.replace_team_names(f"```{standings2}```")
-            
-            embed = discord.Embed(title="League Standings", color=0xeee657)
-            embed.add_field(name="League Standings", value=formatted_standings1, inline=False)
-            embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
-            
+        kind, payload = await asyncio.to_thread(_standings_sync, div_con)
+        if kind == 'text':
+            await ctx.send(payload)
         else:
-            # Handle case-insensitive input
-            div_con_lower = div_con.lower()
-            
-            if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
-                # Wildcard standings
-                if div_con_lower == "western_wildcard":
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'"
-                else:  # Eastern_wildcard
-                    div1_query = "SELECT Number FROM proteam WHERE Division = 'Brendl Division'"
-                    div2_query = "SELECT Number FROM proteam WHERE Division = 'Daigle Division'"
-                
-                div1_teams = DatabaseManager.execute_query(div1_query)
-                div2_teams = DatabaseManager.execute_query(div2_query)
-                
-                div1_numbers = tuple(team[0] for team in div1_teams)
-                div2_numbers = tuple(team[0] for team in div2_teams)
-                
-                div1_stats = StandingsManager.get_team_stats(season_id, div1_numbers)
-                div2_stats = StandingsManager.get_team_stats(season_id, div2_numbers)
-                
-                sorted_div1 = StandingsManager.sort_standings(div1_stats)
-                sorted_div2 = StandingsManager.sort_standings(div2_stats)
-                
-                # Format wildcard standings - split into multiple fields to avoid Discord's 1024 char limit
-                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-                
-                # Division leaders
-                div1_leaders = sorted_div1[:3]
-                div2_leaders = sorted_div2[:3]
-                
-                # Format division leaders
-                div1_standings = header
-                for i, team in enumerate(div1_leaders, 1):
-                    div1_standings += FormattingUtils.format_standings_row(i, team)
-                
-                div2_standings = header
-                for i, team in enumerate(div2_leaders, 1):
-                    div2_standings += FormattingUtils.format_standings_row(i, team)
-                
-                # Wildcard teams
-                wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
-                wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
-                
-                wildcard_standings = header
-                for i, team in enumerate(wildcard_teams, 1):
-                    if i == 3:
-                        wildcard_standings += '-----------------------\n'
-                    wildcard_standings += FormattingUtils.format_standings_row(i, team)
-                
-                # Create embed with multiple fields
-                embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                
-                # Add division leaders
-                if div_con_lower == "western_wildcard":
-                    embed.add_field(name="Stefan Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="Bonsignore Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
-                else:  # Eastern_wildcard
-                    embed.add_field(name="Brendl Division Leaders", value=FormattingUtils.replace_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="Daigle Division Leaders", value=FormattingUtils.replace_team_names(f"```{div2_standings}```"), inline=False)
-                
-                # Add wildcard teams
-                embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_team_names(f"```{wildcard_standings}```"), inline=False)
-                
-            else:
-                # Conference/Division standings - case insensitive mapping
-                division_queries = {
-                    "western": "SELECT Number FROM proteam WHERE Conference = 'Western'",
-                    "eastern": "SELECT Number FROM proteam WHERE Conference = 'Eastern'",
-                    "pacific": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
-                    "bonsignore": "SELECT Number FROM proteam WHERE Division = 'Bonsignore Division'",
-                    "northeast": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
-                    "metro": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
-                    "metropolitan": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
-                    "brendl": "SELECT Number FROM proteam WHERE Division = 'Brendl Division'",
-                    "atlantic": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
-                    "daigle": "SELECT Number FROM proteam WHERE Division = 'Daigle Division'",
-                    "central": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'",
-                    "stefan": "SELECT Number FROM proteam WHERE Division = 'Stefan Division'"
-                }
-                
-                if div_con_lower not in division_queries:
-                    await ctx.send("We could not find that division, please check spelling(Atlantic/Daigle, Central/Stefan, Northeast/Metro/Brendl, Pacific/Bonsignore, Western, Eastern, Western_wildcard, Eastern_wildcard)")
-                    return
-                
-                query = division_queries[div_con_lower]
-                team_numbers = DatabaseManager.execute_query(query)
-                team_numbers_tuple = tuple(team[0] for team in team_numbers)
-                
-                team_stats = StandingsManager.get_team_stats(season_id, team_numbers_tuple)
-                sorted_teams = StandingsManager.sort_standings(team_stats)
-                
-                is_conference = div_con_lower in ["western", "eastern"]
-                
-                # Split standings into multiple fields to avoid Discord's 1024 char limit
-                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-                
-                if is_conference:
-                    # For conferences, split at 10 teams
-                    standings1 = header
-                    standings2 = header
-                    
-                    for i, team in enumerate(sorted_teams, 1):
-                        row = FormattingUtils.format_standings_row(i, team, False)
-                        if i <= 10:
-                            standings1 += row
-                        else:
-                            standings2 += row
-                    
-                    embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                    embed.add_field(name=f"{div_con} Standings (Top 10)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
-                    if len(sorted_teams) > 10:
-                        embed.add_field(name=f"{div_con} Standings (11+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
-                else:
-                    # For divisions, split at 3 teams
-                    standings1 = header
-                    standings2 = header
-                    
-                    for i, team in enumerate(sorted_teams, 1):
-                        row = FormattingUtils.format_standings_row(i, team, True)
-                        if i <= 3:
-                            standings1 += row
-                        else:
-                            standings2 += row
-                    
-                    embed = discord.Embed(title=f"{div_con} Standings", color=0xeee657)
-                    embed.add_field(name=f"{div_con} Standings (Top 3)", value=FormattingUtils.replace_team_names(f"```{standings1}```"), inline=False)
-                    if len(sorted_teams) > 3:
-                        embed.add_field(name=f"{div_con} Standings (4+)", value=FormattingUtils.replace_team_names(f"```{standings2}```"), inline=False)
-        
-        await ctx.send(embed=embed)
-        
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving standings: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving standings: {str(e)}")
+
+
+def _standings_ahl_sync(div_con: Optional[str]) -> Tuple[str, Any]:
+    """Build AHL standings embed off the event loop."""
+    season_id = TeamDataManager.get_current_ahl_season_id()
+
+    if div_con is None:
+        team_stats = StandingsManager.get_ahl_team_stats(season_id)
+        sorted_teams = StandingsManager.sort_standings(team_stats)
+        standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
+
+        formatted_standings1 = FormattingUtils.replace_ahl_team_names(f"```{standings1}```")
+        formatted_standings2 = FormattingUtils.replace_ahl_team_names(f"```{standings2}```")
+
+        embed = discord.Embed(title="AHL League Standings", color=0xeee657)
+        embed.add_field(name="AHL League Standings", value=formatted_standings1, inline=False)
+        embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
+    else:
+        div_con_lower = div_con.lower()
+
+        if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
+            if div_con_lower == "western_wildcard":
+                div1_query = "SELECT Number FROM farmteam WHERE Division = 'Central'"
+                div2_query = "SELECT Number FROM farmteam WHERE Division = 'Pacific'"
+            else:
+                div1_query = "SELECT Number FROM farmteam WHERE Division = 'Atlantic'"
+                div2_query = "SELECT Number FROM farmteam WHERE Division = 'North'"
+
+            div1_teams = DatabaseManager.execute_query(div1_query)
+            div2_teams = DatabaseManager.execute_query(div2_query)
+
+            div1_numbers = tuple(team[0] for team in div1_teams)
+            div2_numbers = tuple(team[0] for team in div2_teams)
+
+            div1_stats = StandingsManager.get_ahl_team_stats(season_id, div1_numbers)
+            div2_stats = StandingsManager.get_ahl_team_stats(season_id, div2_numbers)
+
+            sorted_div1 = StandingsManager.sort_standings(div1_stats)
+            sorted_div2 = StandingsManager.sort_standings(div2_stats)
+
+            header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+
+            div1_leaders = sorted_div1[:3]
+            div2_leaders = sorted_div2[:3]
+
+            div1_standings = header
+            for i, team in enumerate(div1_leaders, 1):
+                div1_standings += FormattingUtils.format_standings_row(i, team)
+
+            div2_standings = header
+            for i, team in enumerate(div2_leaders, 1):
+                div2_standings += FormattingUtils.format_standings_row(i, team)
+
+            wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
+            wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
+
+            wildcard_standings = header
+            for i, team in enumerate(wildcard_teams, 1):
+                if i == 3:
+                    wildcard_standings += '-----------------------\n'
+                wildcard_standings += FormattingUtils.format_standings_row(i, team)
+
+            embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+
+            if div_con_lower == "western_wildcard":
+                embed.add_field(name="Central Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
+                embed.add_field(name="Pacific Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
+            else:
+                embed.add_field(name="Atlantic Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
+                embed.add_field(name="North Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
+
+            embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_ahl_team_names(f"```{wildcard_standings}```"), inline=False)
+
+        else:
+            division_queries = {
+                "western": "SELECT Number FROM farmteam WHERE Conference = 'Western Conference'",
+                "eastern": "SELECT Number FROM farmteam WHERE Conference = 'Eastern Conference'",
+                "pacific": "SELECT Number FROM farmteam WHERE Division = 'Pacific'",
+                "atlantic": "SELECT Number FROM farmteam WHERE Division = 'Atlantic'",
+                "central": "SELECT Number FROM farmteam WHERE Division = 'Central'",
+                "north": "SELECT Number FROM farmteam WHERE Division = 'North'"
+            }
+
+            if div_con_lower not in division_queries:
+                return 'text', "We could not find that division, please check spelling(Atlantic, Central, North, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)"
+
+            query = division_queries[div_con_lower]
+            team_numbers = DatabaseManager.execute_query(query)
+            team_numbers_tuple = tuple(team[0] for team in team_numbers)
+
+            if len(team_numbers_tuple) == 0:
+                return 'text', f"No teams found for {div_con}. The Conference or Division may not exist in the AHL database."
+
+            team_stats = StandingsManager.get_ahl_team_stats(season_id, team_numbers_tuple)
+            sorted_teams = StandingsManager.sort_standings(team_stats)
+
+            is_conference = div_con_lower in ["western", "eastern"]
+
+            header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
+
+            if is_conference:
+                standings1 = header
+                standings2 = header
+
+                for i, team in enumerate(sorted_teams, 1):
+                    row = FormattingUtils.format_standings_row(i, team, False)
+                    if i <= 10:
+                        standings1 += row
+                    else:
+                        standings2 += row
+
+                embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"AHL {div_con} Standings (Top 10)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
+                if len(sorted_teams) > 10:
+                    embed.add_field(name=f"AHL {div_con} Standings (11+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
+            else:
+                standings1 = header
+                standings2 = header
+
+                for i, team in enumerate(sorted_teams, 1):
+                    row = FormattingUtils.format_standings_row(i, team, True)
+                    if i <= 3:
+                        standings1 += row
+                    else:
+                        standings2 += row
+
+                embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
+                embed.add_field(name=f"AHL {div_con} Standings (Top 3)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
+                if len(sorted_teams) > 3:
+                    embed.add_field(name=f"AHL {div_con} Standings (4+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
+
+    return 'embed', embed
 
 
 @bot.command(name='standings_ahl', help="type $standings_ahl followed by the division of conference(ie. $standings_ahl Pacific, $standings_ahl Western) to get the AHL scores for a division or conference. You can view wildcard standings with $standings_ahl Western_wildcard. Default is league standings")
 async def standings_ahl(ctx, div_con: Optional[str] = None):
     """Display AHL standings for league, conference, division, or wildcard."""
     try:
-        season_id = TeamDataManager.get_current_ahl_season_id()
-        
-        if div_con is None:
-            # League standings
-            team_stats = StandingsManager.get_ahl_team_stats(season_id)
-            sorted_teams = StandingsManager.sort_standings(team_stats)
-            standings1, standings2 = StandingsManager.format_league_standings(sorted_teams)
-            
-            formatted_standings1 = FormattingUtils.replace_ahl_team_names(f"```{standings1}```")
-            formatted_standings2 = FormattingUtils.replace_ahl_team_names(f"```{standings2}```")
-            
-            embed = discord.Embed(title="AHL League Standings", color=0xeee657)
-            embed.add_field(name="AHL League Standings", value=formatted_standings1, inline=False)
-            embed.add_field(name="------------------------------", value=formatted_standings2, inline=False)
-            
+        kind, payload = await asyncio.to_thread(_standings_ahl_sync, div_con)
+        if kind == 'text':
+            await ctx.send(payload)
         else:
-            # Handle case-insensitive input
-            div_con_lower = div_con.lower()
-            
-            if div_con_lower in ["western_wildcard", "eastern_wildcard"]:
-                # Wildcard standings
-                if div_con_lower == "western_wildcard":
-                    div1_query = "SELECT Number FROM farmteam WHERE Division = 'Central'"
-                    div2_query = "SELECT Number FROM farmteam WHERE Division = 'Pacific'"
-                else:  # Eastern_wildcard
-                    div1_query = "SELECT Number FROM farmteam WHERE Division = 'Atlantic'"
-                    div2_query = "SELECT Number FROM farmteam WHERE Division = 'North'"
-                
-                div1_teams = DatabaseManager.execute_query(div1_query)
-                div2_teams = DatabaseManager.execute_query(div2_query)
-                
-                div1_numbers = tuple(team[0] for team in div1_teams)
-                div2_numbers = tuple(team[0] for team in div2_teams)
-                
-                div1_stats = StandingsManager.get_ahl_team_stats(season_id, div1_numbers)
-                div2_stats = StandingsManager.get_ahl_team_stats(season_id, div2_numbers)
-                
-                sorted_div1 = StandingsManager.sort_standings(div1_stats)
-                sorted_div2 = StandingsManager.sort_standings(div2_stats)
-                
-                # Format wildcard standings - split into multiple fields to avoid Discord's 1024 char limit
-                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-                
-                # Division leaders
-                div1_leaders = sorted_div1[:3]
-                div2_leaders = sorted_div2[:3]
-                
-                # Format division leaders
-                div1_standings = header
-                for i, team in enumerate(div1_leaders, 1):
-                    div1_standings += FormattingUtils.format_standings_row(i, team)
-                
-                div2_standings = header
-                for i, team in enumerate(div2_leaders, 1):
-                    div2_standings += FormattingUtils.format_standings_row(i, team)
-                
-                # Wildcard teams
-                wildcard_teams = sorted_div1[3:] + sorted_div2[3:]
-                wildcard_teams = StandingsManager.sort_standings(wildcard_teams)
-                
-                wildcard_standings = header
-                for i, team in enumerate(wildcard_teams, 1):
-                    if i == 3:
-                        wildcard_standings += '-----------------------\n'
-                    wildcard_standings += FormattingUtils.format_standings_row(i, team)
-                
-                # Create embed with multiple fields
-                embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
-                
-                # Add division leaders
-                if div_con_lower == "western_wildcard":
-                    embed.add_field(name="Central Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="Pacific Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
-                else:  # Eastern_wildcard
-                    embed.add_field(name="Atlantic Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div1_standings}```"), inline=False)
-                    embed.add_field(name="North Division Leaders", value=FormattingUtils.replace_ahl_team_names(f"```{div2_standings}```"), inline=False)
-                
-                # Add wildcard teams
-                embed.add_field(name="Wildcard Teams", value=FormattingUtils.replace_ahl_team_names(f"```{wildcard_standings}```"), inline=False)
-                
-            else:
-                # Conference/Division standings - case insensitive mapping
-                division_queries = {
-                    "western": "SELECT Number FROM farmteam WHERE Conference = 'Western Conference'",
-                    "eastern": "SELECT Number FROM farmteam WHERE Conference = 'Eastern Conference'",
-                    "pacific": "SELECT Number FROM farmteam WHERE Division = 'Pacific'",
-                    "atlantic": "SELECT Number FROM farmteam WHERE Division = 'Atlantic'",
-                    "central": "SELECT Number FROM farmteam WHERE Division = 'Central'",
-                    "north": "SELECT Number FROM farmteam WHERE Division = 'North'"
-                }
-                
-                if div_con_lower not in division_queries:
-                    await ctx.send("We could not find that division, please check spelling(Atlantic, Central, North, Pacific, Western, Eastern, Western_wildcard, Eastern_wildcard)")
-                    return
-                
-                query = division_queries[div_con_lower]
-                team_numbers = DatabaseManager.execute_query(query)
-                team_numbers_tuple = tuple(team[0] for team in team_numbers)
-                
-                # Check if we got any teams from the query
-                if len(team_numbers_tuple) == 0:
-                    await ctx.send(f"No teams found for {div_con}. The Conference or Division may not exist in the AHL database.")
-                    return
-                
-                team_stats = StandingsManager.get_ahl_team_stats(season_id, team_numbers_tuple)
-                sorted_teams = StandingsManager.sort_standings(team_stats)
-                
-                is_conference = div_con_lower in ["western", "eastern"]
-                
-                # Split standings into multiple fields to avoid Discord's 1024 char limit
-                header = '    Team' + 'GP'.rjust(4) + "W".rjust(5) + "L".rjust(5) + "OTL".rjust(5) + "P".rjust(5) + '\n'
-                
-                if is_conference:
-                    # For conferences, split at 10 teams
-                    standings1 = header
-                    standings2 = header
-                    
-                    for i, team in enumerate(sorted_teams, 1):
-                        row = FormattingUtils.format_standings_row(i, team, False)
-                        if i <= 10:
-                            standings1 += row
-                        else:
-                            standings2 += row
-                    
-                    embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
-                    embed.add_field(name=f"AHL {div_con} Standings (Top 10)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
-                    if len(sorted_teams) > 10:
-                        embed.add_field(name=f"AHL {div_con} Standings (11+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
-                else:
-                    # For divisions, split at 3 teams
-                    standings1 = header
-                    standings2 = header
-                    
-                    for i, team in enumerate(sorted_teams, 1):
-                        row = FormattingUtils.format_standings_row(i, team, True)
-                        if i <= 3:
-                            standings1 += row
-                        else:
-                            standings2 += row
-                    
-                    embed = discord.Embed(title=f"AHL {div_con} Standings", color=0xeee657)
-                    embed.add_field(name=f"AHL {div_con} Standings (Top 3)", value=FormattingUtils.replace_ahl_team_names(f"```{standings1}```"), inline=False)
-                    if len(sorted_teams) > 3:
-                        embed.add_field(name=f"AHL {div_con} Standings (4+)", value=FormattingUtils.replace_ahl_team_names(f"```{standings2}```"), inline=False)
-        
-        await ctx.send(embed=embed)
-        
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving AHL standings: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving AHL standings: {str(e)}")
+
+
+def _scoring_leaders_sync(team_selected: str, position: str, stat: str) -> Tuple[str, Any]:
+    season_id = TeamDataManager.get_current_season_id()
+    team_selected = TeamDataManager.clean_team_name(team_selected)
+
+    player_stats = PlayerStatsManager.get_player_stats(season_id)
+    merged_players = PlayerDataManager.merge_traded_players(player_stats)
+    players_with_positions = PlayerDataManager.add_positions_to_players(merged_players)
+
+    filtered_players = PlayerStatsManager.filter_players_by_team_and_position(
+        players_with_positions, team_selected, position
+    )
+
+    sorted_players = PlayerStatsManager.sort_players_by_stat(filtered_players, stat)
+    amount_to_display = min(10, len(sorted_players))
+    top_players = sorted_players[:amount_to_display]
+
+    if not top_players:
+        return 'text', "No players found matching the specified criteria."
+
+    player_leaders = PlayerStatsManager.format_player_leaders(top_players, stat)
+    players_formatted = f"```{player_leaders}```"
+
+    embed = discord.Embed(title=f"{stat} Leaders", color=0xeee657)
+    embed.add_field(name="Players", value=players_formatted)
+    return 'embed', embed
 
 
 @bot.command(name='scoring_leaders', help="type $scoring_leaders followed by the team you want to filter by, then the position, then the stat for example $scoring_leaders Flames D Goals will give you the flames Defence Goal leaders, $scoring_leaders all F Hits will give you the forward hit leaders for the entire league. positions are C, RW, LW, D. available stats are Points, Goals, Assists, Hits, Pims, +/-, Shots, ShotsBlocked, and GWG. If a team has a space in it's name it requires an underscore ie. $scoring_leaders Golden_Knights")
 async def scoring_leaders(ctx, team_selected: str = 'all', position: str = 'all', stat: str = 'Points'):
     """Display scoring leaders for specified criteria."""
     try:
-        season_id = TeamDataManager.get_current_season_id()
-        team_selected = TeamDataManager.clean_team_name(team_selected)
-        
-        # Get player stats
-        player_stats = PlayerStatsManager.get_player_stats(season_id)
-        merged_players = PlayerDataManager.merge_traded_players(player_stats)
-        players_with_positions = PlayerDataManager.add_positions_to_players(merged_players)
-        
-        # Filter players
-        filtered_players = PlayerStatsManager.filter_players_by_team_and_position(
-            players_with_positions, team_selected, position
-        )
-        
-        # Sort players
-        sorted_players = PlayerStatsManager.sort_players_by_stat(filtered_players, stat)
-        
-        # Limit to top 10
-        amount_to_display = min(10, len(sorted_players))
-        top_players = sorted_players[:amount_to_display]
-        
-        if not top_players:
-            await ctx.send("No players found matching the specified criteria.")
-            return
-        
-        # Format and display
-        player_leaders = PlayerStatsManager.format_player_leaders(top_players, stat)
-        players_formatted = f"```{player_leaders}```"
-        
-        embed = discord.Embed(title=f"{stat} Leaders", color=0xeee657)
-        embed.add_field(name="Players", value=players_formatted)
-        await ctx.send(embed=embed)
-        
+        kind, payload = await asyncio.to_thread(_scoring_leaders_sync, team_selected, position, stat)
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving scoring leaders: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving scoring leaders: {str(e)}")
+
+
+def _goalie_leaders_sync(stat: str, amount_wanted: int, games_wanted: int) -> Tuple[str, Any]:
+    season_id = TeamDataManager.get_current_season_id()
+
+    goalie_stats = GoalieStatsManager.get_goalie_stats(season_id)
+    merged_goalies = GoalieStatsManager.merge_traded_goalies(goalie_stats)
+    goalies_with_stats = GoalieStatsManager.calculate_goalie_stats(merged_goalies)
+
+    filtered_goalies = [g for g in goalies_with_stats if g['GP'] >= games_wanted]
+    sorted_goalies = GoalieStatsManager.sort_goalies_by_stat(filtered_goalies, stat)
+
+    amount_to_display = min(amount_wanted, len(sorted_goalies))
+    top_goalies = sorted_goalies[:amount_to_display]
+
+    if not top_goalies:
+        return 'text', "No goalies found matching the specified criteria."
+
+    goalie_leaders = GoalieStatsManager.format_goalie_leaders(top_goalies, stat)
+    goalies_formatted = f"```{goalie_leaders}```"
+
+    embed = discord.Embed(title=f"Goalie Leaders for {stat}", color=0xeee657)
+    embed.add_field(name="Goalies", value=goalies_formatted)
+    return 'embed', embed
 
 
 @bot.command(name='goalie_leaders', help="type $goalie_leaders followed by the stat you wish to see(ie. $goalie_leaders GAA, SV%, W, GP, SO, L, S) to get the top ten goalies by a certain stat. you can add a second argument to get more goalies, and a third argument to filter by games played. The default stat is save percentage, the default games played is 0, and the default amount of goalies is ten. For example $goalie_leaders will give you the top ten goalies in save percentage out of all goalies. $goalie_leaders GAA 15 10 will give you the top 15 goalies in GAA who have played more than 10 games")
 async def goalie_leaders(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_wanted: int = 0):
     """Display goalie leaders for specified criteria."""
     try:
-        season_id = TeamDataManager.get_current_season_id()
-        
-        # Get goalie stats
-        goalie_stats = GoalieStatsManager.get_goalie_stats(season_id)
-        merged_goalies = GoalieStatsManager.merge_traded_goalies(goalie_stats)
-        goalies_with_stats = GoalieStatsManager.calculate_goalie_stats(merged_goalies)
-        
-        # Filter by games played
-        filtered_goalies = [g for g in goalies_with_stats if g['GP'] >= games_wanted]
-        
-        # Sort goalies
-        sorted_goalies = GoalieStatsManager.sort_goalies_by_stat(filtered_goalies, stat)
-        
-        # Limit to requested amount
-        amount_to_display = min(amount_wanted, len(sorted_goalies))
-        top_goalies = sorted_goalies[:amount_to_display]
-        
-        if not top_goalies:
-            await ctx.send("No goalies found matching the specified criteria.")
-            return
-        
-        # Format and display
-        goalie_leaders = GoalieStatsManager.format_goalie_leaders(top_goalies, stat)
-        goalies_formatted = f"```{goalie_leaders}```"
-        
-        embed = discord.Embed(title=f"Goalie Leaders for {stat}", color=0xeee657)
-        embed.add_field(name="Goalies", value=goalies_formatted)
-        await ctx.send(embed=embed)
-        
+        kind, payload = await asyncio.to_thread(_goalie_leaders_sync, stat, amount_wanted, games_wanted)
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving goalie leaders: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving goalie leaders: {str(e)}")
+
+
+def _scores_by_team_sync(team1: str, team2: str, num_games: int, force_all_seasons: bool) -> Tuple[str, Any]:
+    games = ScoresManager.get_recent_games_for_team(team1, team2, num_games, force_all_seasons)
+    if not games:
+        season_context = "this season" if not force_all_seasons else "all time"
+        return 'text', f"No games found for {team1.title()} {season_context} matching those criteria."
+
+    games_formatted = ScoresManager.format_games_list(games, team1, team2)
+
+    if force_all_seasons:
+        embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (all time)"
+    else:
+        embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (this season)"
+
+    embed = discord.Embed(title=embed_title, color=0xeee657)
+    embed.add_field(name="Games", value=f"```{games_formatted}```", inline=False)
+    return 'embed', embed
 
 
 @bot.command(name='scores_by_team', help="Usage: $scores_by_team <team1> [team2|all] [num_games]. Examples:\n$scores_by_team Oilers\n$scores_by_team Oilers Canucks\n$scores_by_team Oilers all 20")
 async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 10):
     """Return recent games for a team, optionally head-to-head, limited to num_games."""
     try:
-        # Convert num_games if user swapped order (team2 may be numeric)
         if team2.isdigit():
             num_games = int(team2)
             team2 = 'all'
-        else:
-            # third arg may override num_games
-            # ctx.message.content split handled by discord.py but easier parse using *args; here we rely on signature default
-            pass
-        # Clamp
         num_games = min(max(int(num_games), 1), 82)
-
-        # Determine if we should force all seasons or stick to current season
-        # If user specified a specific number of games (not default 10), show all-time
-        # If user specified default 10, show only current season
         force_all_seasons = (num_games != 10) or (ctx.message.content.split()[-1].isdigit())
-        
-        games = ScoresManager.get_recent_games_for_team(team1, team2, num_games, force_all_seasons)
-        if not games:
-            season_context = "this season" if not force_all_seasons else "all time"
-            await ctx.send(f"No games found for {team1.title()} {season_context} matching those criteria.")
-            return
-        
-        games_formatted = ScoresManager.format_games_list(games, team1, team2)
-        
-        # Create appropriate title based on context
-        if force_all_seasons:
-            embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (all time)"
+
+        kind, payload = await asyncio.to_thread(
+            _scores_by_team_sync, team1, team2, num_games, force_all_seasons
+        )
+        if kind == 'text':
+            await ctx.send(payload)
         else:
-            embed_title = f"Last {len(games)} games: {team1.title()}" + (f" vs {team2.title()}" if team2 != 'all' else '') + " (this season)"
-            
-        embed = discord.Embed(title=embed_title, color=0xeee657)
-        embed.add_field(name="Games", value=f"```{games_formatted}```", inline=False)
-        await ctx.send(embed=embed)
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving games: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving games: {str(e)}")
 
@@ -1884,8 +1885,8 @@ async def trades_by_player(ctx, player_name: str, limit: int = 5):
     try:
         # Clamp limit to reasonable range
         limit = min(max(int(limit), 1), 50)
-        
-        trades = TradeManager.get_trades_by_player(player_name, limit)
+
+        trades = await asyncio.to_thread(TradeManager.get_trades_by_player, player_name, limit)
         if not trades:
             await ctx.send(f"No trade history found for {player_name.title()}.")
             return
@@ -1898,6 +1899,8 @@ async def trades_by_player(ctx, player_name: str, limit: int = 5):
             trade_message = TradeManager.format_single_trade(trade, i)
             await ctx.send(trade_message)
             
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving trade history: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
@@ -1910,11 +1913,11 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         if isinstance(team2, str) and team2.isdigit():
             limit = int(team2)
             team2 = 'all'
-        
+
         # Clamp limit to reasonable range
         limit = min(max(int(limit), 1), 50)
-        
-        trades = TradeManager.get_trades_by_team(team1, team2, limit)
+
+        trades = await asyncio.to_thread(TradeManager.get_trades_by_team, team1, team2, limit)
         if not trades:
             if team2 == 'all':
                 await ctx.send(f"No trade history found for {team1.title()}.")
@@ -1932,7 +1935,9 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         for i, trade in enumerate(trades, 1):
             trade_message = TradeManager.format_single_trade(trade, i)
             await ctx.send(trade_message)
-            
+
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving trade history: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving trade history: {str(e)}")
 
@@ -1998,29 +2003,35 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
 #         await ctx.send(f"Error retrieving awards: {str(e)}")
 
 
+def _scores_farm_sync(selecteddate: str) -> Tuple[str, Any]:
+    games, game_date = ScoresManager.get_farm_games_for_date(selecteddate)
+    if not games:
+        return 'text', "No farm games found for the specified date."
+
+    game_scores = ScoresManager.format_game_scores(games)
+    title_score = f"the farm scores for {game_date}"
+    scores_formatted = f"```{game_scores}```"
+
+    embed = discord.Embed(title=title_score, url='http://mrfhl.com/farm_scores.php', color=0xeee657)
+    embed.add_field(name="Farm Scores", value=scores_formatted)
+    return 'embed', embed
+
+
 # New command: Farm scores
 @bot.command(name='scores_farm', help="type $scores_farm followed by the date(ie. $scores_farm 2020/03/29) to get the farm scores for a specific date")
 async def scores_farm(ctx, selecteddate: str = None):
     """Display farm scores for a specific date."""
-    # Default to today's date if none provided
     if selecteddate is None:
         selecteddate = str(date.today())
 
     try:
-        games, game_date = ScoresManager.get_farm_games_for_date(selecteddate)
-
-        if not games:
-            await ctx.send("No farm games found for the specified date.")
-            return
-
-        game_scores = ScoresManager.format_game_scores(games)
-        title_score = f"the farm scores for {game_date}"
-        scores_formatted = f"```{game_scores}```"
-
-        embed = discord.Embed(title=title_score, url='http://mrfhl.com/farm_scores.php', color=0xeee657)
-        embed.add_field(name="Farm Scores", value=scores_formatted)
-        await ctx.send(embed=embed)
-
+        kind, payload = await asyncio.to_thread(_scores_farm_sync, selecteddate)
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving farm scores: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving farm scores: {str(e)}")
 
