@@ -67,9 +67,10 @@ AHL_TEAM_CITY_ACRONYMS = {
     'Reign': 'ONT',            # Ontario (CA)
 }
 
-# Bot setup (message_content required for $ commands in servers — enable in Developer Portal)
+# Bot setup (message_content: discord.py 2.0+; enable in Developer Portal for $ commands in servers)
 _intents = discord.Intents.default()
-_intents.message_content = True
+if hasattr(_intents, "message_content"):
+    _intents.message_content = True
 client = discord.Client(intents=_intents)
 bot = commands.Bot(intents=_intents, command_prefix='$')
 
