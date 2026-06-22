@@ -195,6 +195,16 @@ class TeamDataManager:
         
         return cleaned
 
+    @staticmethod
+    def resolve_farm_team_name(team: str) -> Optional[str]:
+        """Resolve AHL/farm team nickname from user input (case-insensitive)."""
+        cleaned = team.replace('_', ' ')
+        result = DatabaseManager.execute_query(
+            "SELECT Name FROM farmteam WHERE LOWER(Name) = %s",
+            (cleaned.lower(),),
+        )
+        return result[0][0] if result else None
+
 
 class PlayerDataManager:
     """Handles player-related data operations."""
@@ -538,11 +548,77 @@ class ScoresManager:
         return DatabaseManager.execute_query(query, params)
 
     @staticmethod
-    def format_games_list(games: List[Tuple], team1: str = None, team2: str = None) -> str:
+    def get_recent_farm_games_for_team(
+        team1: str, team2: str = "all", limit: int = 10, force_all_seasons: bool = False
+    ) -> List[Tuple]:
+        """Return most recent AHL (Farm) games for team1, optionally against team2."""
+        resolved = TeamDataManager.resolve_farm_team_name(team1)
+        if not resolved:
+            return []
+        team1 = resolved
+        if team2 != "all":
+            resolved2 = TeamDataManager.resolve_farm_team_name(team2)
+            if not resolved2:
+                return []
+            team2 = resolved2
+
+        current_season_id = TeamDataManager.get_current_ahl_season_id()
+        farm_filter = " AND Type = 'Farm'"
+
+        if team2 != "all":
+            if force_all_seasons:
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore,
+                              VisitorTeamGoaler, HomeTeamGoaler """
+                    "FROM todaysgame "
+                    "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s))"
+                    + farm_filter + " ORDER BY Date DESC LIMIT %s"
+                )
+                params = (team1, team2, team2, team1, limit)
+            else:
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore,
+                              VisitorTeamGoaler, HomeTeamGoaler """
+                    "FROM todaysgame "
+                    "WHERE ((VisitorTeam = %s AND HomeTeam = %s) OR (VisitorTeam = %s AND HomeTeam = %s))"
+                    " AND Season_ID = %s" + farm_filter + " ORDER BY Date DESC LIMIT %s"
+                )
+                params = (team1, team2, team2, team1, current_season_id, limit)
+        else:
+            if force_all_seasons:
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore,
+                              VisitorTeamGoaler, HomeTeamGoaler """
+                    "FROM todaysgame "
+                    "WHERE (VisitorTeam = %s OR HomeTeam = %s)" + farm_filter
+                    + " ORDER BY Date DESC LIMIT %s"
+                )
+                params = (team1, team1, limit)
+            else:
+                query = (
+                    """SELECT Date, VisitorTeam, VisitorTeamScore, HomeTeam, HomeTeamScore,
+                              VisitorTeamGoaler, HomeTeamGoaler """
+                    "FROM todaysgame "
+                    "WHERE (VisitorTeam = %s OR HomeTeam = %s) AND Season_ID = %s"
+                    + farm_filter + " ORDER BY Date DESC LIMIT %s"
+                )
+                params = (team1, team1, current_season_id, limit)
+
+        return DatabaseManager.execute_query(query, params)
+
+    @staticmethod
+    def format_games_list(
+        games: List[Tuple],
+        team1: str = None,
+        team2: str = None,
+        acronym_map: Optional[Dict[str, str]] = None,
+    ) -> str:
         """Format a list of games into a readable string with proper alignment."""
         if not games:
             return "No games found."
-        
+
+        acronyms = acronym_map or TEAM_ACRONYMS
+
         # Header with proper alignment
         result = "Date              Away                Home\n"
         result += "--------------------------------------------------\n"
@@ -565,8 +641,8 @@ class ScoresManager:
                     date_str = date_str.split(' ')[0]
             
             # Get team acronyms for display
-            v_acronym = TEAM_ACRONYMS.get(v_team, v_team)
-            h_acronym = TEAM_ACRONYMS.get(h_team, h_team)
+            v_acronym = acronyms.get(v_team, v_team)
+            h_acronym = acronyms.get(h_team, h_team)
             
             # Check if this was an overtime game
             is_ot, overtime_type = ScoresManager.is_overtime_game(v_goalie, h_goalie) if v_goalie and h_goalie else (False, "")
@@ -1396,7 +1472,46 @@ class PlayerStatsManager:
             })
         
         return cleaned_stats
-    
+
+    @staticmethod
+    def get_farm_player_stats(season_id: int) -> List[Dict]:
+        """Get all AHL/farm player statistics."""
+        team_mapping = TeamDataManager.get_ahl_team_id_mapping()
+
+        players_data = DatabaseManager.execute_query(
+            """SELECT Name, Team, FarmGP, FarmShots, FarmG, FarmA, FarmPoint, FarmPlusMinus,
+                      FarmPim, FarmShotsBlock, FarmHits, FarmGW, Active
+               FROM playerstats WHERE Season_ID = (%s) AND FarmGP > 0""",
+            (season_id,),
+        )
+
+        cleaned_stats = []
+        for player in players_data:
+            cleaned_stats.append({
+                'Name': player[0],
+                'Team': team_mapping[int(player[1])],
+                'GP': player[2], 'Shots': player[3], 'Goals': player[4],
+                'Assists': player[5], 'Points': player[6], '+/-': player[7],
+                'Pims': player[8], 'ShotsBlocked': player[9], 'Hits': player[10],
+                'GWG': player[11], 'currentTeam': player[12],
+            })
+
+        return cleaned_stats
+
+    @staticmethod
+    def filter_farm_players_by_team_and_position(players: List[Dict], team: str, position: str) -> List[Dict]:
+        """Filter farm players by team and position."""
+        if team != 'all':
+            resolved = TeamDataManager.resolve_farm_team_name(team)
+            if not resolved:
+                return []
+            players = [p for p in players if p['Team'] == resolved]
+
+        if position != 'all':
+            players = [p for p in players if position in p['Position']]
+
+        return players
+
     @staticmethod
     def filter_players_by_team_and_position(players: List[Dict], team: str, position: str) -> List[Dict]:
         """Filter players by team and position."""
@@ -1423,14 +1538,20 @@ class PlayerStatsManager:
         return sorted(players, key=lambda k: (-k[sort_key] if reverse else k[sort_key]))
     
     @staticmethod
-    def format_player_leaders(players: List[Dict], stat: str) -> str:
+    def format_player_leaders(
+        players: List[Dict],
+        stat: str,
+        team_acronyms: Optional[Dict[str, str]] = None,
+    ) -> str:
         """Format player leaders for display."""
+        acronyms = team_acronyms or TEAM_ACRONYMS
         leaders = 'Team' + 'Name'.rjust(7) + stat.rjust(22) + '\n'
-        
+
         for player in players:
-            leaders += (f"{TEAM_ACRONYMS[player['Team']]}    {player['Name']}"
+            team_label = acronyms.get(player['Team'], player['Team'])
+            leaders += (f"{team_label}    {player['Name']}"
                       f"{str(player[stat]).rjust(26 - len(str(player['Name'])))}\n")
-        
+
         return leaders
 
 
@@ -1462,7 +1583,33 @@ class GoalieStatsManager:
             })
         
         return cleaned_stats
-    
+
+    @staticmethod
+    def get_farm_goalie_stats(season_id: int) -> List[Dict]:
+        """Get all AHL/farm goalie statistics."""
+        team_mapping = TeamDataManager.get_ahl_team_id_mapping()
+
+        goalies_data = DatabaseManager.execute_query(
+            """SELECT Name, Team, FarmGP, FarmMinPlay, FarmW, FarmL, FarmOTL, FarmShutouts,
+                      FarmGA, FarmSA, Active
+               FROM goaliestats WHERE Season_ID = (%s) AND FarmGP > 0""",
+            (season_id,),
+        )
+
+        cleaned_stats = []
+        for goalie in goalies_data:
+            saves = int(goalie[9]) - int(goalie[8])
+            cleaned_stats.append({
+                'Name': goalie[0],
+                'Team': team_mapping[int(goalie[1])],
+                'GP': goalie[2], 'Minutes': goalie[3], 'Wins': goalie[4],
+                'Losses': goalie[5], 'OTL': goalie[6], 'SO': goalie[7],
+                'GA': goalie[8], 'Saves': saves, 'SA': int(goalie[9]),
+                'currentTeam': goalie[10],
+            })
+
+        return cleaned_stats
+
     @staticmethod
     def merge_traded_goalies(goalies: List[Dict]) -> List[Dict]:
         """Merge stats for goalies who were traded."""
@@ -1524,14 +1671,24 @@ class GoalieStatsManager:
         return sorted(goalies, key=lambda k: (-k[sort_key] if reverse else k[sort_key]))
     
     @staticmethod
-    def format_goalie_leaders(goalies: List[Dict], stat: str) -> str:
+    def format_goalie_leaders(
+        goalies: List[Dict],
+        stat: str,
+        team_acronyms: Optional[Dict[str, str]] = None,
+    ) -> str:
         """Format goalie leaders for display."""
+        acronyms = team_acronyms or TEAM_ACRONYMS
+        stat_key = {
+            'GAA': 'GAA', 'SV%': 'SVP', 'W': 'Wins', 'GP': 'GP',
+            'SO': 'SO', 'L': 'Losses', 'S': 'Saves',
+        }.get(stat, stat)
         leaders = 'Team' + 'goalie'.rjust(10) + stat.rjust(16) + '\n'
-        
+
         for goalie in goalies:
-            leaders += (f"{TEAM_ACRONYMS[goalie['Team']]}     {goalie['Name']}"
-                      f"{str(goalie[stat]).rjust(22 - len(str(goalie['Name'])))}\n")
-        
+            team_label = acronyms.get(goalie['Team'], goalie['Team'])
+            leaders += (f"{team_label}     {goalie['Name']}"
+                      f"{str(goalie[stat_key]).rjust(22 - len(str(goalie['Name'])))}\n")
+
         return leaders
 
 
@@ -1911,6 +2068,59 @@ async def scoring_leaders(ctx, team_selected: str = 'all', position: str = 'all'
         await ctx.send(f"Error retrieving scoring leaders: {str(e)}")
 
 
+def _scoring_leaders_farm_sync(team_selected: str, position: str, stat: str) -> Tuple[str, Any]:
+    season_id = TeamDataManager.get_current_ahl_season_id()
+
+    player_stats = PlayerStatsManager.get_farm_player_stats(season_id)
+    merged_players = PlayerDataManager.merge_traded_players(player_stats)
+    players_with_positions = PlayerDataManager.add_positions_to_players(merged_players)
+
+    filtered_players = PlayerStatsManager.filter_farm_players_by_team_and_position(
+        players_with_positions, team_selected, position
+    )
+
+    sorted_players = PlayerStatsManager.sort_players_by_stat(filtered_players, stat)
+    amount_to_display = min(10, len(sorted_players))
+    top_players = sorted_players[:amount_to_display]
+
+    if not top_players:
+        return 'text', "No AHL players found matching the specified criteria."
+
+    player_leaders = PlayerStatsManager.format_player_leaders(
+        top_players, stat, team_acronyms=AHL_TEAM_CITY_ACRONYMS
+    )
+    players_formatted = f"```{player_leaders}```"
+
+    embed = discord.Embed(title=f"AHL {stat} Leaders", color=0xeee657)
+    embed.add_field(name="Players", value=players_formatted)
+    return 'embed', embed
+
+
+@bot.command(
+    name='scoring_leaders_farm',
+    help=(
+        "AHL scoring leaders. Usage: $scoring_leaders_farm [team] [position] [stat]. "
+        "Examples: $scoring_leaders_farm | $scoring_leaders_farm Marlies D Goals | "
+        "$scoring_leaders_farm all F Hits. Positions: C, RW, LW, D, F. "
+        "Stats: Points, Goals, Assists, Hits, Pims, +/-, Shots, Shots_blocked, GWG."
+    ),
+)
+async def scoring_leaders_farm(ctx, team_selected: str = 'all', position: str = 'all', stat: str = 'Points'):
+    """Display AHL scoring leaders for specified criteria."""
+    try:
+        kind, payload = await asyncio.to_thread(
+            _scoring_leaders_farm_sync, team_selected, position, stat
+        )
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving AHL scoring leaders: {e}")
+    except Exception as e:
+        await ctx.send(f"Error retrieving AHL scoring leaders: {str(e)}")
+
+
 def _goalie_leaders_sync(stat: str, amount_wanted: int, games_wanted: int) -> Tuple[str, Any]:
     season_id = TeamDataManager.get_current_season_id()
 
@@ -1948,6 +2158,56 @@ async def goalie_leaders(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_
         await ctx.send(f"Error retrieving goalie leaders: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving goalie leaders: {str(e)}")
+
+
+def _goalie_leaders_farm_sync(stat: str, amount_wanted: int, games_wanted: int) -> Tuple[str, Any]:
+    season_id = TeamDataManager.get_current_ahl_season_id()
+
+    goalie_stats = GoalieStatsManager.get_farm_goalie_stats(season_id)
+    merged_goalies = GoalieStatsManager.merge_traded_goalies(goalie_stats)
+    goalies_with_stats = GoalieStatsManager.calculate_goalie_stats(merged_goalies)
+
+    filtered_goalies = [g for g in goalies_with_stats if g['GP'] >= games_wanted]
+    sorted_goalies = GoalieStatsManager.sort_goalies_by_stat(filtered_goalies, stat)
+
+    amount_to_display = min(amount_wanted, len(sorted_goalies))
+    top_goalies = sorted_goalies[:amount_to_display]
+
+    if not top_goalies:
+        return 'text', "No AHL goalies found matching the specified criteria."
+
+    goalie_leaders = GoalieStatsManager.format_goalie_leaders(
+        top_goalies, stat, team_acronyms=AHL_TEAM_CITY_ACRONYMS
+    )
+    goalies_formatted = f"```{goalie_leaders}```"
+
+    embed = discord.Embed(title=f"AHL Goalie Leaders for {stat}", color=0xeee657)
+    embed.add_field(name="Goalies", value=goalies_formatted)
+    return 'embed', embed
+
+
+@bot.command(
+    name='goalie_leaders_farm',
+    help=(
+        "AHL goalie leaders. Usage: $goalie_leaders_farm [stat] [amount] [min_gp]. "
+        "Examples: $goalie_leaders_farm | $goalie_leaders_farm GAA | $goalie_leaders_farm SV% 15 10. "
+        "Stats: GAA, SV%, W, GP, SO, L, S."
+    ),
+)
+async def goalie_leaders_farm(ctx, stat: str = 'SV%', amount_wanted: int = 10, games_wanted: int = 0):
+    """Display AHL goalie leaders for specified criteria."""
+    try:
+        kind, payload = await asyncio.to_thread(
+            _goalie_leaders_farm_sync, stat, amount_wanted, games_wanted
+        )
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving AHL goalie leaders: {e}")
+    except Exception as e:
+        await ctx.send(f"Error retrieving AHL goalie leaders: {str(e)}")
 
 
 def _scores_by_team_sync(team1: str, team2: str, num_games: int, force_all_seasons: bool) -> Tuple[str, Any]:
@@ -1989,6 +2249,72 @@ async def scores_by_team(ctx, team1: str, team2: str = 'all', num_games: int = 1
         await ctx.send(f"Error retrieving games: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving games: {str(e)}")
+
+
+def _scores_by_team_farm_sync(team1: str, team2: str, num_games: int, force_all_seasons: bool) -> Tuple[str, Any]:
+    resolved = TeamDataManager.resolve_farm_team_name(team1)
+    if not resolved:
+        return 'text', f"Could not find AHL team {team1!r}. Use farm team nicknames (e.g. Marlies, Bears)."
+
+    games = ScoresManager.get_recent_farm_games_for_team(team1, team2, num_games, force_all_seasons)
+    if not games:
+        season_context = "this season" if not force_all_seasons else "all time"
+        return 'text', f"No AHL games found for {resolved} {season_context} matching those criteria."
+
+    team2_display = team2
+    if team2 != 'all':
+        team2_display = TeamDataManager.resolve_farm_team_name(team2) or team2
+
+    games_formatted = ScoresManager.format_games_list(
+        games, resolved, team2_display, acronym_map=AHL_TEAM_CITY_ACRONYMS
+    )
+
+    if force_all_seasons:
+        embed_title = (
+            f"Last {len(games)} AHL games: {resolved}"
+            + (f" vs {team2_display}" if team2 != 'all' else '')
+            + " (all time)"
+        )
+    else:
+        embed_title = (
+            f"Last {len(games)} AHL games: {resolved}"
+            + (f" vs {team2_display}" if team2 != 'all' else '')
+            + " (this season)"
+        )
+
+    embed = discord.Embed(title=embed_title, color=0xeee657)
+    embed.add_field(name="Games", value=f"```{games_formatted}```", inline=False)
+    return 'embed', embed
+
+
+@bot.command(
+    name='scores_by_team_farm',
+    help=(
+        "Recent AHL games for a farm team. Usage: $scores_by_team_farm <team1> [team2|all] [num_games]. "
+        "Examples: $scores_by_team_farm Marlies | $scores_by_team_farm Marlies Bears | "
+        "$scores_by_team_farm Marlies all 20"
+    ),
+)
+async def scores_by_team_farm(ctx, team1: str, team2: str = 'all', num_games: int = 10):
+    """Return recent AHL games for a farm team, optionally head-to-head."""
+    try:
+        if team2.isdigit():
+            num_games = int(team2)
+            team2 = 'all'
+        num_games = min(max(int(num_games), 1), 82)
+        force_all_seasons = (num_games != 10) or (ctx.message.content.split()[-1].isdigit())
+
+        kind, payload = await asyncio.to_thread(
+            _scores_by_team_farm_sync, team1, team2, num_games, force_all_seasons
+        )
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving AHL games: {e}")
+    except Exception as e:
+        await ctx.send(f"Error retrieving AHL games: {str(e)}")
 
 
 @bot.command(name='trades_by_player', help="Usage: $trades_by_player <player_name> [limit]. Examples:\n$trades_by_player Mikael_backlund\n$trades_by_player Mikael_backlund 1")
