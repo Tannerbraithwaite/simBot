@@ -2,7 +2,7 @@ import asyncio
 import mysql.connector as mysql
 from discord.ext import commands
 import discord
-from datetime import date
+from datetime import date, datetime
 from dotenv import load_dotenv
 import os
 from typing import List, Dict, Any, Optional, Tuple
@@ -945,7 +945,118 @@ class TradeManager:
             LIMIT %s
             """
             return DatabaseManager.execute_query(query, (team1_id, team2_id, team2_id, team1_id, limit))
-    
+
+    @staticmethod
+    def parse_since_date(date_str: str) -> date:
+        """Parse user date input (MM/DD/YYYY, YYYY-MM-DD, YYYY/MM/DD, MM-DD-YYYY)."""
+        for fmt in ('%m/%d/%Y', '%Y/%m/%d', '%Y-%m-%d', '%m-%d-%Y'):
+            try:
+                return datetime.strptime(date_str.strip(), fmt).date()
+            except ValueError:
+                continue
+        raise ValueError(
+            f"Unrecognized date {date_str!r}. Use MM/DD/YYYY (e.g. 01/12/2020)."
+        )
+
+    @staticmethod
+    def get_best_friends(team: str, count: Optional[int] = None, since_date: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Count approved trades between a team and each partner; return partners by volume."""
+        team_clean = TeamDataManager.clean_team_name(team)
+        team_result = DatabaseManager.execute_query(
+            "SELECT Number, Name FROM proteam WHERE LOWER(Name) = %s",
+            (team_clean.lower(),),
+        )
+        if not team_result:
+            return None
+
+        team_id, team_name = team_result[0]
+        cutoff: Optional[date] = None
+        if since_date:
+            cutoff = TradeManager.parse_since_date(since_date)
+
+        query = """
+        SELECT
+          CASE WHEN Team1 = %s THEN Team2 ELSE Team1 END AS partner_id,
+          COUNT(*) AS trade_count,
+          MAX(DateCreated) AS last_trade
+        FROM transactions
+        WHERE (Team1 = %s OR Team2 = %s)
+        AND (Team1Approved = TRUE OR Team1Approved = 'True')
+        AND (Team2Approved = TRUE OR Team2Approved = 'True')
+        """
+        params: List[Any] = [team_id, team_id, team_id]
+
+        if cutoff:
+            query += " AND DateCreated >= %s"
+            params.append(cutoff)
+
+        query += """
+        GROUP BY CASE WHEN Team1 = %s THEN Team2 ELSE Team1 END
+        ORDER BY trade_count DESC, last_trade DESC
+        """
+        params.append(team_id)
+        if count is not None:
+            query += " LIMIT %s"
+            params.append(count)
+
+        rows = DatabaseManager.execute_query(query, tuple(params))
+        partners = []
+        for partner_id, trade_count, last_trade in rows:
+            partners.append({
+                'team': TradeManager.get_team_name(partner_id),
+                'count': int(trade_count),
+                'last_trade': str(last_trade).split(' ')[0] if last_trade else 'Unknown',
+            })
+
+        return {
+            'team_name': team_name,
+            'partners': partners,
+            'since': str(cutoff) if cutoff else None,
+            'limit': count,
+        }
+
+    @staticmethod
+    def format_best_friends_embed(data: Dict[str, Any]) -> discord.Embed:
+        """Format trade partner leaderboard for Discord."""
+        team_name = data['team_name']
+        team_label = TEAM_ACRONYMS.get(team_name, team_name)
+        limit = data.get('limit')
+        if limit is not None:
+            title = f"{team_label} — Top {limit} Trade Partners"
+        else:
+            title = f"{team_label} — Trade Partners"
+        if data['since']:
+            title += f" since {data['since']}"
+
+        header = '    Team' + 'Trades'.rjust(8) + 'Last Trade'.rjust(14) + '\n'
+        rows = []
+        for i, partner in enumerate(data['partners'], 1):
+            partner_label = TEAM_ACRONYMS.get(partner['team'], partner['team'])
+            rank = f"{i}.  " if i < 10 else f"{i}. "
+            name_col = rank + partner_label
+            rows.append(
+                name_col
+                + str(partner['count']).rjust(22 - len(name_col))
+                + partner['last_trade'].rjust(14)
+                + '\n'
+            )
+
+        embed = discord.Embed(title=title, color=0xeee657)
+        chunk = header
+        field_num = 0
+        for row in rows:
+            if len(chunk) + len(row) > 950:
+                field_name = "Trade Partners" if field_num == 0 else "Trade Partners (cont.)"
+                embed.add_field(name=field_name, value=f"```{chunk}```", inline=False)
+                field_num += 1
+                chunk = row
+            else:
+                chunk += row
+        if chunk:
+            field_name = "Trade Partners" if field_num == 0 else "Trade Partners (cont.)"
+            embed.add_field(name=field_name, value=f"```{chunk}```", inline=False)
+        return embed
+
     @staticmethod
     def get_team_name(team_id: int) -> str:
         """Get team name from team ID."""
@@ -1941,6 +2052,55 @@ async def trades_by_team(ctx, team1: str, team2: str = 'all', limit: int = 5):
         await ctx.send(f"Error retrieving trade history: {e}")
     except Exception as e:
         await ctx.send(f"Error retrieving trade history: {str(e)}")
+
+
+def _best_friends_sync(team: str, count: Optional[int], since_date: Optional[str]) -> Tuple[str, Any]:
+    try:
+        data = TradeManager.get_best_friends(team, count, since_date)
+    except ValueError as e:
+        return 'text', str(e)
+
+    if data is None:
+        cleaned = TeamDataManager.clean_team_name(team)
+        return 'text', f"Could not find team {cleaned!r}. Check spelling (underscores for spaces, e.g. Golden_Knights)."
+
+    if not data['partners']:
+        since_suffix = f" since {data['since']}" if data['since'] else ''
+        return 'text', f"No trades found for {data['team_name']}{since_suffix}."
+
+    return 'embed', TradeManager.format_best_friends_embed(data)
+
+
+@bot.command(
+    name='best_friends',
+    help=(
+        "Trade partners for a team. Usage: $best_friends <team> [count] [since_date]. "
+        "Examples: $best_friends Oilers (all partners) | $best_friends Oilers 10 "
+        "| $best_friends Oilers 01/12/2020 (all since date) | $best_friends Oilers 10 01/12/2020. "
+        "Dates: MM/DD/YYYY, YYYY-MM-DD, or YYYY/MM/DD."
+    ),
+)
+async def best_friends(ctx, team: str, arg2: str = None, arg3: str = None):
+    """Show teams a franchise trades with most often."""
+    count = None
+    since_date = None
+    if arg2 is not None:
+        if arg2.isdigit():
+            count = min(max(int(arg2), 1), 32)
+            since_date = arg3
+        else:
+            since_date = arg2
+
+    try:
+        kind, payload = await asyncio.to_thread(_best_friends_sync, team, count, since_date)
+        if kind == 'text':
+            await ctx.send(payload)
+        else:
+            await ctx.send(embed=payload)
+    except mysql.Error as e:
+        await ctx.send(f"Error retrieving trade partners: {e}")
+    except Exception as e:
+        await ctx.send(f"Error retrieving trade partners: {str(e)}")
 
 
 # @bot.command(name='awards', help="Usage: $awards [award_name] [season_id]. Examples:\n$awards (current season)\n$awards 2015 (all awards for 2015)\n$awards MVP 2015 (MVP from 2015)\n$awards MVP all (all historical MVPs)\n\nAvailable Awards:\n🏆 NHL: MVP, PlayoffMVP, TopScorer, GoalieOfTheYear, DefensemanOfTheYear, RookieOfTheYear, BestDefensiveForward, MostSportsmanlikePlayer, CoachOfTheYear, TopGoalScorer, LowestGAA, LowestPIM, GeneralManager\n🏆 Farm: FarmMVP, FarmPlayoffMVP, FarmTopScorer, FarmGoalieOfTheYear, FarmDefensemanOfTheYear, FarmRookieOfTheYear, FarmBestDefensiveForward, FarmMostSportsmanlikePlayer, FarmCoachOfTheYear, FarmTopGoalScorer, FarmLowestGAA, FarmLowestPIM")
