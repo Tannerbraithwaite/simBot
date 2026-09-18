@@ -25,9 +25,9 @@ TEAM_ACRONYMS = {
     'Wild': 'MIN', 'Ducks': 'ANA', 'Maple Leafs': 'TOR', 'Blackhawks': 'CHI', 
     'Sharks': 'SJS', 'Jets': 'WPG', 'Blues': 'STL', 'Hurricanes': 'CAR', 'Predators': 'NSH', 
     'Kings': 'LAK', 'Avalanche': 'COL', 'Rangers': 'NYR', 'Oilers': 'EDM', 'Islanders': 'NYI', 
-    'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CAL', 'Capitals': 'WSH', 'Stars': 'DAL', 
+    'Senators': 'OTT', 'Devils': 'NJD', 'Flames': 'CGY', 'Capitals': 'WSH', 'Stars': 'DAL', 
     'Canucks': 'VAN', 'Sabres': 'BUF', 'Lightning': 'TBL', 'Blue Jackets': 'CBJ', 
-    'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MON', 'Bruins': 'BOS', 'Flyers': 'PHI', 
+    'Golden Knights': 'VGK', 'Panthers': 'FLA', 'Canadiens': 'MTL', 'Bruins': 'BOS', 'Flyers': 'PHI', 
     'Red Wings': 'DET', 'Penguins': 'PIT', 'Kraken': 'SEA', 'Mammoth': 'UTA',
 }
 
