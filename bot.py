@@ -35,30 +35,30 @@ TEAM_ACRONYMS = {
 AHL_TEAM_CITY_ACRONYMS = {
     'Marlies': 'TOR',          # Toronto
     'Bears': 'HER',            # Hershey
-    'Phantoms': 'LVL',         # Lehigh Valley (Allentown)
-    'Barracuda': 'SJS',        # San Jose
+    'Phantoms': 'LVP',         # Lehigh Valley (Allentown)
+    'Barracuda': 'SJB',        # San Jose
     'Wranglers': 'CGY',        # Calgary
     'Eagles': 'COL',           # Loveland
     'Stars': 'TEX',            # Cedar Park
     'Rocket': 'LAV',           # Laval
-    'Griffins': 'GRP',         # Grand Rapids
+    'Griffins': 'GRG',         # Grand Rapids
     'Condors': 'BAK',          # Bakersfield
-    'Islanders': 'BRI',        # Bridgeport
+    'Hammers': 'HAM',        # Bridgeport
     'Firebirds': 'CVF',        # Coachella Valley
     'Senators': 'BEL',         # Belleville
     'Canucks': 'ABB',          # Abbotsford
-    'Silver Knights': 'HEN',   # Henderson
+    'Silver Knights': 'HSK',   # Henderson
     'Gulls': 'SDG',            # San Diego
-    'Moose': 'MAN',            # Manitoba (Winnipeg)
-    'Wolf Pack': 'HAR',        # Hartford
+    'Moose': 'MBM',            # Manitoba (Winnipeg)
+    'Wolf Pack': 'HFD',        # Hartford
     'Americans': 'ROC',        # Rochester
-    'Wild': 'IOW',             # Iowa (Des Moines)
-    'Comets': 'UTI',           # Utica
+    'Wild': 'IAW',             # Iowa (Des Moines)
+    'Comets': 'UTC',           # Utica
     'Admirals': 'MIL',         # Milwaukee
     'Bruins': 'PRO',           # Providence
     'Wolves': 'CHI',           # Chicago
     'Roadrunners': 'TUC',      # Tucson
-    'Checkers': 'CHA',         # Charlotte
+    'Checkers': 'CLT',         # Charlotte
     'Thunderbirds': 'SPR',     # Springfield
     'Monsters': 'CLE',         # Cleveland
     'Crunch': 'SYR',           # Syracuse
